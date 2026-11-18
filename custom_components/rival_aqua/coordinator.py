@@ -23,7 +23,6 @@ from .api import (
     RivalInfo,
     RivalNetwork,
     RivalState,
-    normalize_color,
 )
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, MANUFACTURER, TIME_SYNC_INTERVAL
 
@@ -195,27 +194,6 @@ class RivalCoordinator(DataUpdateCoordinator[RivalState]):
     def _reload(self) -> None:
         """Re-create the entities from fresh /chnumb, names and colours."""
         self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
-
-    @_raise_ha_error
-    async def async_set_fan_enabled(self, enabled: bool) -> None:
-        await self.client.async_set_fan_enabled(enabled)
-        self._reload()  # adds/removes the cooler fan entity
-
-    @_raise_ha_error
-    async def async_set_channel_name(self, channel: int, name: str) -> None:
-        names = list(self.info.channel_names[: self.info.channel_count])
-        names[channel] = name
-        await self.client.async_save_settings(channel_names=names)
-        self._reload()  # entity names and the RGBWW mapping follow channel names
-
-    @_raise_ha_error
-    async def async_set_channel_color(self, channel: int, color: str) -> None:
-        color = normalize_color(color)
-        await self.client.async_set_color(channel, color)
-        colors = self.info.channel_colors + [""] * (9 - len(self.info.channel_colors))
-        colors[channel] = color
-        self.info.channel_colors = colors
-        self.async_update_listeners()
 
     @_raise_ha_error
     async def async_set_hotspot(self, name: str | None, password: str | None) -> None:

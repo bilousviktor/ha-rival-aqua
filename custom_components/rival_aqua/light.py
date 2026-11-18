@@ -3,7 +3,9 @@
 * One combined light. With the stock Cool White / Green / Blue / Warm White /
   Red channels it uses HA's RGBWW colour mode; otherwise it is a brightness
   light that scales the current channel mix.
-* One brightness light per channel for fine-grained control.
+* One brightness light per channel for fine-grained control. These are
+  hidden while the controller follows its schedule and shown in manual
+  (hand) mode, so the device page only offers them when they make sense.
 
 Any change made from Home Assistant puts the controller into manual mode
 (the daily schedule pauses). Turn the "Manual mode" switch off to resume it.
@@ -20,6 +22,7 @@ from homeassistant.components.light import (
     LightEntity,
 )
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import RivalConfigEntry, RivalCoordinator
@@ -159,11 +162,27 @@ class RivalChannelLight(RivalEntity, LightEntity):
             return 0
         return data.levels[self._channel]
 
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self._sync_hidden()
+
     @callback
     def _handle_coordinator_update(self) -> None:
         if self._level:
             self._last_level = self._level
+        self._sync_hidden()
         super()._handle_coordinator_update()
+
+    @callback
+    def _sync_hidden(self) -> None:
+        """Show the channel only in manual mode. A user's own hide/unhide wins."""
+        entry = self.registry_entry
+        data = self.coordinator.data
+        if entry is None or data is None or entry.hidden_by is er.RegistryEntryHider.USER:
+            return
+        hidden_by = None if data.manual else er.RegistryEntryHider.INTEGRATION
+        if entry.hidden_by is not hidden_by:
+            er.async_get(self.hass).async_update_entity(self.entity_id, hidden_by=hidden_by)
 
     @property
     def is_on(self) -> bool:

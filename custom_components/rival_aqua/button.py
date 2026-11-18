@@ -19,23 +19,7 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data.coordinator
-    async_add_entities([RivalSyncTimeButton(coordinator), RivalRebootButton(coordinator)])
-
-
-class RivalSyncTimeButton(RivalEntity, ButtonEntity):
-    """Push Home Assistant's local time to the controller clock now.
-
-    The integration also does this automatically every few hours.
-    """
-
-    _attr_translation_key = "sync_time"
-    _attr_entity_category = EntityCategory.CONFIG
-
-    def __init__(self, coordinator: RivalCoordinator) -> None:
-        super().__init__(coordinator, "sync_time")
-
-    async def async_press(self) -> None:
-        await self.coordinator.async_sync_time()
+    async_add_entities([RivalRebootButton(coordinator)])
 
 
 class RivalRebootButton(RivalEntity, ButtonEntity):

@@ -37,8 +37,11 @@ Local polling over HTTP, no cloud. Distributed via HACS.
 - `api.py`: aiohttp client, no HA imports (testable standalone). Parsing of the JS files lives here.
 - `coordinator.py`: DataUpdateCoordinator, 10 s poll, write helpers that raise HomeAssistantError.
 - `light.py`: combined RGBWW light (maps the 5 channels by name, see `levels.py`) plus one light per channel.
-- `switch.py` (manual mode, night indicator, cooler channel), `button.py` (sync clock, restart),
-  `fan.py` (cooler, only if enabled), `text.py` (channel names/colours), `sensor.py` (network, diagnostic).
+  The channel lights are hidden (registry `hidden_by=integration`) unless the controller is in manual mode.
+- `switch.py` (manual mode, night indicator), `button.py` (restart), `fan.py` (cooler, only if enabled),
+  `sensor.py` (network, diagnostic). Device page: Controls = main light + manual mode (+ channels in
+  manual mode); Configuration = restart + night indicator. Entities dropped in 0.5.0 are removed from
+  the registry in `__init__._async_remove_old_entities`.
 - `services.py`: schedule get/set, plus hotspot, Wi-Fi scan/join/forget and factory reset.
 - `frontend/rival-aqua-schedule-card.js`: schedule editor card (no build step), served by `__init__.py`.
 

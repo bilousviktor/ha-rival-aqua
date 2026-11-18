@@ -1,4 +1,4 @@
-"""Switches for Rival Aqua: manual mode, night indicator, cooler channel."""
+"""Switches for Rival Aqua: manual (hand) mode and the night indicator."""
 
 from __future__ import annotations
 
@@ -25,7 +25,6 @@ async def async_setup_entry(
         [
             RivalManualModeSwitch(coordinator),
             RivalNightIndicatorSwitch(coordinator),
-            RivalCoolerEnabledSwitch(coordinator),
         ]
     )
 
@@ -54,7 +53,6 @@ class RivalNightIndicatorSwitch(RivalEntity, SwitchEntity):
 
     _attr_translation_key = "night_indicator"
     _attr_entity_category = EntityCategory.CONFIG
-    _attr_entity_registry_enabled_default = False
 
     def __init__(self, coordinator: RivalCoordinator) -> None:
         super().__init__(coordinator, "night_indicator")
@@ -69,25 +67,3 @@ class RivalNightIndicatorSwitch(RivalEntity, SwitchEntity):
     async def async_turn_off(self, **kwargs: Any) -> None:
         await self.coordinator.async_set_night_indicator(False)
 
-
-class RivalCoolerEnabledSwitch(RivalEntity, SwitchEntity):
-    """Whether the controller drives a cooler on channel 8 ("Вентилятор" in its settings).
-
-    Toggling it reloads the integration so the cooler fan entity appears or disappears.
-    """
-
-    _attr_translation_key = "cooler_enabled"
-    _attr_entity_category = EntityCategory.CONFIG
-
-    def __init__(self, coordinator: RivalCoordinator) -> None:
-        super().__init__(coordinator, "cooler_enabled")
-
-    @property
-    def is_on(self) -> bool:
-        return self.coordinator.info.fan_enabled
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator.async_set_fan_enabled(True)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator.async_set_fan_enabled(False)

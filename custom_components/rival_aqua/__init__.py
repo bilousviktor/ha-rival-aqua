@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import re
 from pathlib import Path
 
 from homeassistant.components.http import StaticPathConfig
@@ -9,6 +10,7 @@ from homeassistant.const import CONF_HOST, Platform
 from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryNotReady
 from homeassistant.helpers import config_validation as cv
+from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.loader import async_get_integration
@@ -24,10 +26,13 @@ PLATFORMS: list[Platform] = [
     Platform.LIGHT,
     Platform.SENSOR,
     Platform.SWITCH,
-    Platform.TEXT,
 ]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
+
+# Entities dropped in 0.5.0 (unique id suffixes); removed from the registry on setup.
+_REMOVED_KEYS = ("_sync_time", "_cooler_enabled")
+_REMOVED_KEY_PATTERN = re.compile(r"_channel_\d+_(name|color)$")
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:
@@ -64,12 +69,22 @@ async def async_setup_entry(hass: HomeAssistant, entry: RivalConfigEntry) -> boo
     except RivalError as err:
         raise ConfigEntryNotReady(f"Cannot reach Rival controller: {err}") from err
 
+    _async_remove_old_entities(hass, entry)
     coordinator = RivalCoordinator(hass, entry, client, info)
     await coordinator.async_config_entry_first_refresh()
 
     entry.runtime_data = RivalRuntimeData(client=client, coordinator=coordinator)
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
     return True
+
+
+def _async_remove_old_entities(hass: HomeAssistant, entry: RivalConfigEntry) -> None:
+    """Drop registry entries of entities this version no longer creates."""
+    registry = er.async_get(hass)
+    for reg_entry in er.async_entries_for_config_entry(registry, entry.entry_id):
+        uid = reg_entry.unique_id
+        if uid.endswith(_REMOVED_KEYS) or _REMOVED_KEY_PATTERN.search(uid):
+            registry.async_remove(reg_entry.entity_id)
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: RivalConfigEntry) -> bool:

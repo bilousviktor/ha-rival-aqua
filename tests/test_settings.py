@@ -23,56 +23,7 @@ async def test_settings_entities(hass: HomeAssistant, controller: Controller) ->
     assert states["sensor.aquarium_wi_fi_network"] == "HomeNet"
     assert states["sensor.aquarium_hotspot_name"] == "Rival_LED"
     assert not any("11223344" in str(v) for v in states.values())  # password never in a state
-    assert states["switch.aquarium_cooler_channel"] == "off"
-    assert states["text.aquarium_channel_1_name"] == "Cool White"
-    assert states["text.aquarium_channel_4_name"] == "Warm White"  # trailing space stripped
-    assert states["text.aquarium_cool_white_colour"] == "#FFFFFF"
-    assert states["text.aquarium_blue_colour"] == "#0000FF"
-    assert "text.aquarium_cooler_colour" not in states
     assert "button.aquarium_restart" in states
-
-
-async def test_channel_name_and_colour(hass: HomeAssistant, controller: Controller) -> None:
-    await _setup(hass, controller.host)
-
-    await _call(hass, "text", "set_value", {"entity_id": "text.aquarium_channel_3_name", "value": "Royal Blue"})
-    await hass.async_block_till_done()  # reload
-    assert controller.names[:5] == ["Cool White", "Green", "Royal Blue", "Warm White", "Red"]
-    assert controller.hotspot == ("Rival_LED", "11223344")  # re-sent unchanged
-    i = controller.log.index("/saveparam?namepoint=Rival_LED&passpoint=11223344")
-    assert controller.log[i + 1].startswith("/savenamechan?name0=Cool")
-    # Same entity, new name after the reload
-    assert hass.states.get("light.aquarium_blue").name == "Aquarium Royal Blue"
-    assert hass.states.get("text.aquarium_channel_3_name").state == "Royal Blue"
-
-    with pytest.raises((ValueError, ServiceValidationError)):
-        await _call(hass, "text", "set_value", {"entity_id": "text.aquarium_channel_1_name", "value": "it's"})
-
-    await _call(hass, "text", "set_value", {"entity_id": "text.aquarium_red_colour", "value": "#ff8800"})
-    assert controller.colors[4] == "#FF8800"
-    assert hass.states.get("text.aquarium_red_colour").state == "#FF8800"
-    resp = await _call(hass, DOMAIN, "get_schedule", {}, return_response=True)
-    assert resp["colors"][4] == "#FF8800"  # the schedule card picks it up
-    with pytest.raises((ValueError, ServiceValidationError)):
-        await _call(hass, "text", "set_value", {"entity_id": "text.aquarium_red_colour", "value": "red"})
-
-
-async def test_cooler_channel(hass: HomeAssistant, controller: Controller) -> None:
-    await _setup(hass, controller.host)
-    assert hass.states.get("fan.aquarium_cooler") is None
-
-    await _call(hass, "switch", "turn_on", {"entity_id": "switch.aquarium_cooler_channel"})
-    await hass.async_block_till_done()
-    assert controller.fan
-    assert hass.states.get("switch.aquarium_cooler_channel").state == "on"
-    assert hass.states.get("fan.aquarium_cooler") is not None
-    assert hass.states.get("text.aquarium_cooler_colour").state == "#FF4500"
-
-    await _call(hass, "switch", "turn_off", {"entity_id": "switch.aquarium_cooler_channel"})
-    await hass.async_block_till_done()
-    assert not controller.fan
-    fan = hass.states.get("fan.aquarium_cooler")
-    assert fan is None or fan.state == "unavailable"
 
 
 async def test_hotspot(hass: HomeAssistant, controller: Controller) -> None:
@@ -113,3 +64,27 @@ async def test_wifi_and_maintenance(hass: HomeAssistant, controller: Controller)
     await _call(hass, DOMAIN, "factory_reset", {})
     await hass.async_block_till_done()
     assert controller.factory_resets == 1
+
+
+async def test_removed_entities_cleaned_up(hass: HomeAssistant, controller: Controller) -> None:
+    """Entities dropped in 0.5.0 are removed from the registry on the next setup."""
+    from homeassistant.helpers import entity_registry as er
+
+    entry = await _setup(hass, controller.host)
+    reg = er.async_get(hass)
+    prefix = entry.unique_id or entry.entry_id
+    for platform, key in [
+        ("text", "channel_0_name"),
+        ("text", "channel_2_color"),
+        ("switch", "cooler_enabled"),
+        ("button", "sync_time"),
+    ]:
+        reg.async_get_or_create(platform, DOMAIN, f"{prefix}_{key}", config_entry=entry)
+
+    assert await hass.config_entries.async_reload(entry.entry_id)
+    await hass.async_block_till_done()
+    uids = {e.unique_id for e in er.async_entries_for_config_entry(reg, entry.entry_id)}
+    for key in ("channel_0_name", "channel_2_color", "cooler_enabled", "sync_time"):
+        assert f"{prefix}_{key}" not in uids
+    assert f"{prefix}_hotspot_name" in uids  # not caught by the cleanup
+    assert f"{prefix}_channel_0" in uids  # channel lights kept

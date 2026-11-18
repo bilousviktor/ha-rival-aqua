@@ -70,10 +70,16 @@ async def test_full(hass: HomeAssistant, controller: Controller) -> None:
     assert states["switch.aquarium_manual_mode"].state == "off"
     assert controller.clock is not None  # clock synced on first poll
 
-    # Night indicator disabled by default; fan absent (fan_en=0)
+    # Night indicator enabled; fan absent (fan_en=0); dropped entities gone
     reg = er.async_get(hass)
-    assert reg.async_get("switch.aquarium_night_indicator").disabled_by is not None
-    assert not any(e.startswith("fan.") for e in states)
+    assert states["switch.aquarium_night_indicator"].state == "on"
+    assert not any(e.startswith(("fan.", "text.")) for e in states)
+    assert "button.aquarium_sync_clock" not in states
+
+    # Schedule mode: channel lights hidden, the main light and mode switch shown
+    assert reg.async_get("light.aquarium_blue").hidden_by is er.RegistryEntryHider.INTEGRATION
+    assert reg.async_get("light.aquarium").hidden_by is None
+    assert reg.async_get("switch.aquarium_manual_mode").hidden_by is None
 
     # Set one channel -> manual mode entered, other levels preserved
     await hass.services.async_call(
@@ -85,6 +91,7 @@ async def test_full(hass: HomeAssistant, controller: Controller) -> None:
     assert controller.hand == 1 and controller.block == 1 and controller.pwm_man
     assert hass.states.get("switch.aquarium_manual_mode").state == "on"
     assert hass.states.get("light.aquarium_blue").attributes["brightness"] == 102
+    assert reg.async_get("light.aquarium_blue").hidden_by is None  # shown in hand mode
 
     # Combined light: pure warm white at 50 %
     await hass.services.async_call(
@@ -119,13 +126,12 @@ async def test_full(hass: HomeAssistant, controller: Controller) -> None:
     assert controller.hand == 0 and controller.block == 0 and not controller.pwm_man
     assert controller.levels == [58, 9, 9, 9, 9]
     assert hass.states.get("light.aquarium").attributes["mode"] == "schedule"
+    assert reg.async_get("light.aquarium_blue").hidden_by is er.RegistryEntryHider.INTEGRATION
 
-    # Sync clock button
-    controller.clock = None
-    await hass.services.async_call(
-        "button", "press", {"entity_id": "button.aquarium_sync_clock"}, blocking=True
-    )
-    assert controller.clock is not None
+    # A user's own unhide is kept across mode changes
+    reg.async_update_entity("light.aquarium_red", hidden_by=er.RegistryEntryHider.USER)
+    await entry.runtime_data.coordinator.async_refresh()
+    assert reg.async_get("light.aquarium_red").hidden_by is er.RegistryEntryHider.USER
 
     # Unload
     assert await hass.config_entries.async_unload(entry.entry_id)

@@ -9,11 +9,11 @@ over your LAN.
 | Entity | What it does |
 |---|---|
 | `light.<name>` | All channels as one light. With the stock channels (Cool White, Green, Blue, Warm White, Red) it's an **RGBWW** light; otherwise brightness-only, scaling the current mix. |
-| `light.<name>_<channel>` | One brightness light per LED channel. Attribute `schedule` shows that channel's day curve. |
-| `switch.<name>_manual_mode` | **On** = manual levels, **off** = the controller follows its own daily schedule. |
-| `button.<name>_sync_clock` | Pushes HA's local time to the controller. Also done automatically every 6 h. |
+| `switch.<name>_manual_mode` | Auto/hand toggle. **On** = manual levels, **off** = the controller follows its own daily schedule. |
+| `light.<name>_<channel>` | One brightness light per LED channel. **Shown only in manual mode**: while the schedule runs they are hidden (you can unhide one yourself in its entity settings, and it stays visible). Attribute `schedule` shows that channel's day curve. |
 | `fan.<name>_cooler` | Only if the cooler is enabled on the controller. |
-| `switch.<name>_night_indicator` | The controller's night status LED. Disabled by default. |
+
+The controller clock is synced from HA automatically every 6 h.
 
 ### Settings (the controller's settings page)
 
@@ -21,9 +21,7 @@ Device page → *Configuration* and *Diagnostic*:
 
 | Entity / action | What it does |
 |---|---|
-| `text.<name>_channel_N_name` | Channel name (up to 25 characters). The integration reloads so light names follow. **The combined RGBWW light needs the stock names** (Red, Green, Blue, Cool White, Warm White); with other names it becomes brightness-only. |
-| `text.<name>_<channel>_colour` | Channel display colour `#RRGGBB`, used by the controller's web chart and the schedule card. |
-| `switch.<name>_cooler_channel` | Enables the cooler on channel 8 ("Вентилятор"). The integration reloads and the fan entity appears or disappears. |
+| `switch.<name>_night_indicator` | The controller's night status LED ("Ночная индикация"). |
 | `button.<name>_restart` | Reboots the controller. It reconnects on its own. |
 | `sensor.<name>_ip_address`, `_wi_fi_network`, `_hotspot_name` | Network details (diagnostic). The hotspot password is never stored in a state. |
 | `rival_aqua.set_hotspot` | Changes the controller's own hotspot name (4-20 of `A-Z a-z 0-9 - _`) and/or password (8-12 digits). |

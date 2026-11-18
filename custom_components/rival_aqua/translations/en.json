@@ -24,30 +24,11 @@
       },
       "night_indicator": {
         "name": "Night indicator"
-      },
-      "cooler_enabled": {
-        "name": "Cooler channel"
-      }
-    },
-    "button": {
-      "sync_time": {
-        "name": "Sync clock"
       }
     },
     "fan": {
       "cooler": {
         "name": "Cooler"
-      }
-    },
-    "text": {
-      "channel_name": {
-        "name": "Channel {number} name"
-      },
-      "channel_color": {
-        "name": "{channel} colour"
-      },
-      "cooler_color": {
-        "name": "Cooler colour"
       }
     },
     "sensor": {

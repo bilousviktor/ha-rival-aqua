@@ -24,30 +24,11 @@
       },
       "night_indicator": {
         "name": "Нічна індикація"
-      },
-      "cooler_enabled": {
-        "name": "Канал кулера"
-      }
-    },
-    "button": {
-      "sync_time": {
-        "name": "Синхронізувати годинник"
       }
     },
     "fan": {
       "cooler": {
         "name": "Кулер"
-      }
-    },
-    "text": {
-      "channel_name": {
-        "name": "Назва каналу {number}"
-      },
-      "channel_color": {
-        "name": "Колір: {channel}"
-      },
-      "cooler_color": {
-        "name": "Колір кулера"
       }
     },
     "sensor": {
