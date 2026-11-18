@@ -20,7 +20,10 @@ class Controller:
         self.channels = channels
         self.fan = fan
         self.stat = True
+        # Manual levels (/chmanlvl, set by /light and /lightsetmode). Like the real
+        # controller, /curlevelrange always reports the schedule, even in hand mode.
         self.levels = [58, 9, 9, 9, 9][:channels]
+        self.schedule_levels = [58, 9, 9, 9, 9][:channels]
         self.fan_level = 30
         self.hand = 0
         self.block = 0
@@ -71,7 +74,12 @@ class Controller:
             r.add_get(path, handler)
 
         add("/chnumb", lambda q: txt(f"{self.channels},{int(self.fan)},{int(self.stat)}"))
-        add("/curlevelrange", lambda q: txt("".join(f"{v};" for v in self.levels + ([self.fan_level] if self.fan else []))))
+        add("/curlevelrange", lambda q: txt("".join(f"{v};" for v in self.schedule_levels + ([self.fan_level] if self.fan else []))))
+
+        def chmanlvl(q):
+            ch = int(q.query["ch"])
+            return txt(self.fan_level if ch == 8 else self.levels[ch])
+        add("/chmanlvl", chmanlvl)
         add("/handmodestate", lambda q: txt(self.hand))
         add("/blockrange", lambda q: txt(self.block))
         arr = lambda name, xs: js(f"var {name}=[" + ",".join(f"'{x}'" for x in xs) + "];")
@@ -173,9 +181,7 @@ class Controller:
 
         def blockset(q):
             self.block = 1 if q.query["state"] == "true" else 0
-            if not self.block:  # back to schedule: firmware recomputes levels
-                self.levels = [58, 9, 9, 9, 9][: self.channels]
-            return txt("OK")
+            return txt("OK")  # manual levels stay stored (seen on the real controller)
         add("/blockrangeset", blockset)
 
         def sync(q):

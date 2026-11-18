@@ -261,7 +261,11 @@ class RivalAquaClient:
         return self.info
 
     async def async_get_levels(self) -> tuple[list[int], int | None]:
-        """Current output levels in percent (and fan level if enabled)."""
+        """Levels of the daily schedule right now, in percent (and fan if enabled).
+
+        This is the actual output only while the schedule runs: in manual mode
+        /curlevelrange keeps reporting the schedule, see async_get_manual_levels.
+        """
         info = self.info or await self.async_get_info()
         text = await self._get("/curlevelrange")
         values = [int(v) for v in text.split(";") if v.strip().lstrip("-").isdigit()]
@@ -271,13 +275,30 @@ class RivalAquaClient:
             fan = values[info.channel_count]
         return levels, fan
 
+    async def async_get_manual_levels(self) -> tuple[list[int], int | None]:
+        """Manual-mode levels in percent (and fan if enabled), one /chmanlvl per channel.
+
+        The web UI reads these (detectManlvl in chanfancheck.js) when entering hand mode.
+        """
+        info = self.info or await self.async_get_info()
+        channels = list(range(info.channel_count))
+        if info.fan_enabled:
+            channels.append(FAN_CHANNEL)
+        values = []
+        for ch in channels:
+            text = (await self._get("/chmanlvl", {"ch": ch})).strip()
+            values.append(_clamp_level(int(text)) if text.lstrip("-").isdigit() else 0)
+        fan = values.pop() if info.fan_enabled else None
+        return values, fan
+
     async def async_get_schedule(self) -> list[list[SchedulePoint]]:
         """The stored day curve, one list of points per channel (index 8 = fan)."""
         return _parse_schedule(await self._get("/chartdata.js"))
 
     async def async_get_state(self, include_schedule: bool = False) -> RivalState:
-        levels, fan = await self.async_get_levels()
         hand = await self._get_flag("/handmodestate")
+        # In hand mode /curlevelrange still shows the schedule, not the output.
+        levels, fan = await (self.async_get_manual_levels() if hand else self.async_get_levels())
         unlocked = await self._get_flag("/blockrange")
         chnumb = await self._get("/chnumb")
         parts = chnumb.split(",")

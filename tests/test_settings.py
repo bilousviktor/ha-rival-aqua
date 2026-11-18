@@ -78,13 +78,15 @@ async def test_removed_entities_cleaned_up(hass: HomeAssistant, controller: Cont
         ("text", "channel_2_color"),
         ("switch", "cooler_enabled"),
         ("button", "sync_time"),
+        ("light", "channel_0"),
     ]:
         reg.async_get_or_create(platform, DOMAIN, f"{prefix}_{key}", config_entry=entry)
 
     assert await hass.config_entries.async_reload(entry.entry_id)
     await hass.async_block_till_done()
     uids = {e.unique_id for e in er.async_entries_for_config_entry(reg, entry.entry_id)}
-    for key in ("channel_0_name", "channel_2_color", "cooler_enabled", "sync_time"):
+    for key in ("channel_0_name", "channel_2_color", "cooler_enabled", "sync_time", "channel_0"):
         assert f"{prefix}_{key}" not in uids
     assert f"{prefix}_hotspot_name" in uids  # not caught by the cleanup
-    assert f"{prefix}_channel_0" in uids  # channel lights kept
+    assert f"{prefix}_channel_0" not in uids  # channel light (dropped too)
+    assert f"{prefix}_light" in uids

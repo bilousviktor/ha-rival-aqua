@@ -144,17 +144,6 @@ class RivalCoordinator(DataUpdateCoordinator[RivalState]):
         await self._apply_local(levels=levels)
 
     @_raise_ha_error
-    async def async_set_channel(self, channel: int, level: int) -> None:
-        await self.async_ensure_manual()
-        await self.client.async_set_channel(channel, level)
-        if self.data is not None and channel < len(self.data.levels):
-            levels = list(self.data.levels)
-            levels[channel] = level
-            await self._apply_local(levels=levels)
-        else:
-            await self.async_request_refresh()
-
-    @_raise_ha_error
     async def async_set_fan(self, level: int) -> None:
         await self.async_ensure_manual()
         await self.client.async_set_channel(FAN_CHANNEL, level)

@@ -30,9 +30,9 @@ PLATFORMS: list[Platform] = [
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
-# Entities dropped in 0.5.0 (unique id suffixes); removed from the registry on setup.
+# Entities dropped in 0.5.x (unique id suffixes); removed from the registry on setup.
 _REMOVED_KEYS = ("_sync_time", "_cooler_enabled")
-_REMOVED_KEY_PATTERN = re.compile(r"_channel_\d+_(name|color)$")
+_REMOVED_KEY_PATTERN = re.compile(r"_channel_\d+(_name|_color)?$")  # channel lights, names, colours
 
 
 async def async_setup(hass: HomeAssistant, config: ConfigType) -> bool:

@@ -8,9 +8,8 @@ over your LAN.
 
 | Entity | What it does |
 |---|---|
-| `light.<name>` | All channels as one light. With the stock channels (Cool White, Green, Blue, Warm White, Red) it's an **RGBWW** light; otherwise brightness-only, scaling the current mix. |
+| `light.<name>` | All channels as one light (there are no per-channel lights). With the stock channels (Cool White, Green, Blue, Warm White, Red) it's an **RGBWW** light; otherwise brightness-only, scaling the current mix. |
 | `switch.<name>_manual_mode` | Auto/hand toggle. **On** = manual levels, **off** = the controller follows its own daily schedule. |
-| `light.<name>_<channel>` | One brightness light per LED channel. **Shown only in manual mode**: while the schedule runs they are hidden (you can unhide one yourself in its entity settings, and it stays visible). Attribute `schedule` shows that channel's day curve. |
 | `fan.<name>_cooler` | Only if the cooler is enabled on the controller. |
 
 The controller clock is synced from HA automatically every 6 h.
@@ -128,7 +127,8 @@ All endpoints are `GET` on port 80, `text/plain` responses, no auth.
 | Endpoint | Meaning |
 |---|---|
 | `/chnumb` | `channels,fan_enabled,night_indicator` (e.g. `5,0,1`) |
-| `/curlevelrange` | current levels in %, `;`-separated (fan last if enabled) |
+| `/curlevelrange` | the schedule's levels right now in %, `;`-separated (fan last if enabled). **Not** the output in manual mode: it keeps reporting the schedule |
+| `/chmanlvl?ch=N` | manual-mode level of channel N in % (8 = cooler); the actual output while in manual mode |
 | `/handmodestate`, `/blockrange` | manual-mode flags `0`/`1` |
 | `/chmanlvl?ch=N` | stored manual level of channel N |
 | `/namechannellist.js`, `/color.js` | channel names and colours (JS arrays) |

@@ -15,6 +15,9 @@ Local polling over HTTP, no cloud. Distributed via HACS.
 - No NTP: the clock is set via `/synchtime`. The integration syncs it every 6 h.
 - Manual mode = `/handmode?onoff=1` + `/pwm_man?state=true` + `/blockrangeset?state=true`.
   Any HA light change enters manual mode first. The "Manual mode" switch off resumes the schedule.
+- Reading levels: `/curlevelrange` always reports the **schedule** levels, even in manual mode. In manual
+  mode the output is `/chmanlvl?ch=N` (per channel, 8 = cooler). Manual levels stay stored after the
+  schedule resumes. Verified on hardware 2026-11-18.
 - Schedule save (web UI "Save" button, `savepoint()` in uscript.js):
   `/pointtimes?pn=N&p0=<min>..` → `/pointch?ch=0..8&p0=<level>..` (always 9 channels, 8 = cooler,
   zeros for unused) → `/pwm_man?state=false` → `/blockrangeset?state=false`.
@@ -26,7 +29,9 @@ Local polling over HTTP, no cloud. Distributed via HACS.
   or `curl http://192.168.5.200/curlevelrange`.
 - **Ask Viktor before any write** (`/light`, `/lightsetmode`, `/handmode`, `/pointtimes`, `/pointch`,
   ...). It changes the light over a live aquarium.
-- Not yet verified on real hardware: write paths in manual mode, and whether the schedule save
+- Verified on hardware 2026-11-18: entering manual mode, `/lightsetmode` and `/light` (both set the
+  manual levels), and leaving manual mode.
+- Not yet verified on real hardware: whether the schedule save
   round-trips (save the current schedule unchanged, then check `/chartdata.js` is identical).
   Also unverified: every settings write (`/saveparam` + `/savenamechan`, `/color`, `/fanenset`,
   Wi-Fi join/forget, `/setdefault`); in particular whether `/saveparam` restarts the hotspot or reboots.
@@ -36,11 +41,11 @@ Local polling over HTTP, no cloud. Distributed via HACS.
 
 - `api.py`: aiohttp client, no HA imports (testable standalone). Parsing of the JS files lives here.
 - `coordinator.py`: DataUpdateCoordinator, 10 s poll, write helpers that raise HomeAssistantError.
-- `light.py`: combined RGBWW light (maps the 5 channels by name, see `levels.py`) plus one light per channel.
-  The channel lights are hidden (registry `hidden_by=integration`) unless the controller is in manual mode.
+- `light.py`: one combined RGBWW light (maps the 5 channels by name, see `levels.py`). No per-channel
+  lights: HA's device page can't hide entities (`hidden_by` only labels them), so they were dropped.
 - `switch.py` (manual mode, night indicator), `button.py` (restart), `fan.py` (cooler, only if enabled),
-  `sensor.py` (network, diagnostic). Device page: Controls = main light + manual mode (+ channels in
-  manual mode); Configuration = restart + night indicator. Entities dropped in 0.5.0 are removed from
+  `sensor.py` (network, diagnostic). Device page: Controls = main light + manual mode;
+  Configuration = restart + night indicator. Entities dropped in 0.5.x are removed from
   the registry in `__init__._async_remove_old_entities`.
 - `services.py`: schedule get/set, plus hotspot, Wi-Fi scan/join/forget and factory reset.
 - `frontend/rival-aqua-schedule-card.js`: schedule editor card (no build step), served by `__init__.py`.

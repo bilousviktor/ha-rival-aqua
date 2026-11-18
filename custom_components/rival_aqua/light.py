@@ -3,9 +3,6 @@
 * One combined light. With the stock Cool White / Green / Blue / Warm White /
   Red channels it uses HA's RGBWW colour mode; otherwise it is a brightness
   light that scales the current channel mix.
-* One brightness light per channel for fine-grained control. These are
-  hidden while the controller follows its schedule and shown in manual
-  (hand) mode, so the device page only offers them when they make sense.
 
 Any change made from Home Assistant puts the controller into manual mode
 (the daily schedule pauses). Turn the "Manual mode" switch off to resume it.
@@ -22,13 +19,11 @@ from homeassistant.components.light import (
     LightEntity,
 )
 from homeassistant.core import HomeAssistant, callback
-from homeassistant.helpers import entity_registry as er
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
 
 from .coordinator import RivalConfigEntry, RivalCoordinator
 from .entity import RivalEntity
 from .levels import (
-    brightness_to_level,
     level_to_brightness,
     levels_to_brightness_and_rgbww,
     mix_ratios,
@@ -47,16 +42,8 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data.coordinator
-    info = coordinator.info
-    entities: list[LightEntity] = [RivalMainLight(coordinator)]
-    entities += [
-        RivalChannelLight(coordinator, idx) for idx in range(info.channel_count)
-    ]
-    async_add_entities(entities)
+    async_add_entities([RivalMainLight(coordinator)])
 
-
-def _fmt_minute(minute: int) -> str:
-    return f"{minute // 60:02d}:{minute % 60:02d}"
 
 
 class RivalMainLight(RivalEntity, LightEntity):
@@ -142,74 +129,3 @@ class RivalMainLight(RivalEntity, LightEntity):
             self._last_levels = self._levels
         await self.coordinator.async_set_levels([0] * self._count)
 
-
-class RivalChannelLight(RivalEntity, LightEntity):
-    """A single LED channel."""
-
-    _attr_supported_color_modes = {ColorMode.BRIGHTNESS}
-    _attr_color_mode = ColorMode.BRIGHTNESS
-
-    def __init__(self, coordinator: RivalCoordinator, channel: int) -> None:
-        super().__init__(coordinator, f"channel_{channel}")
-        self._channel = channel
-        self._attr_name = coordinator.info.channel_names[channel].strip()
-        self._last_level: int | None = None
-
-    @property
-    def _level(self) -> int:
-        data = self.coordinator.data
-        if not data or self._channel >= len(data.levels):
-            return 0
-        return data.levels[self._channel]
-
-    async def async_added_to_hass(self) -> None:
-        await super().async_added_to_hass()
-        self._sync_hidden()
-
-    @callback
-    def _handle_coordinator_update(self) -> None:
-        if self._level:
-            self._last_level = self._level
-        self._sync_hidden()
-        super()._handle_coordinator_update()
-
-    @callback
-    def _sync_hidden(self) -> None:
-        """Show the channel only in manual mode. A user's own hide/unhide wins."""
-        entry = self.registry_entry
-        data = self.coordinator.data
-        if entry is None or data is None or entry.hidden_by is er.RegistryEntryHider.USER:
-            return
-        hidden_by = None if data.manual else er.RegistryEntryHider.INTEGRATION
-        if entry.hidden_by is not hidden_by:
-            er.async_get(self.hass).async_update_entity(self.entity_id, hidden_by=hidden_by)
-
-    @property
-    def is_on(self) -> bool:
-        return self._level > 0
-
-    @property
-    def brightness(self) -> int:
-        return level_to_brightness(self._level)
-
-    @property
-    def extra_state_attributes(self) -> dict[str, Any]:
-        data = self.coordinator.data
-        attrs: dict[str, Any] = {"level_percent": self._level}
-        if data and self._channel < len(data.schedule):
-            attrs["schedule"] = {
-                _fmt_minute(p.minute): p.level for p in data.schedule[self._channel]
-            }
-        return attrs
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        if ATTR_BRIGHTNESS in kwargs:
-            level = brightness_to_level(kwargs[ATTR_BRIGHTNESS])
-        else:
-            level = self._level or self._last_level or FALLBACK_LEVEL
-        await self.coordinator.async_set_channel(self._channel, level)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        if self._level:
-            self._last_level = self._level
-        await self.coordinator.async_set_channel(self._channel, 0)

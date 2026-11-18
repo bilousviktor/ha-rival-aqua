@@ -1,6 +1,9 @@
 """End-to-end: run the integration in Home Assistant against the mock controller."""
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 from aiohttp import web
 from homeassistant import config_entries
@@ -65,33 +68,25 @@ async def test_full(hass: HomeAssistant, controller: Controller) -> None:
     # R, G, B, CW, WW relative to the 58 % peak (cool white)
     assert main.attributes["rgbww_color"] == (40, 40, 40, 255, 40)
     assert main.attributes["mode"] == "schedule"
-    assert states["light.aquarium_cool_white"].attributes["brightness"] == 148
-    assert states["light.aquarium_cool_white"].attributes["schedule"]["11:00"] == 59
     assert states["switch.aquarium_manual_mode"].state == "off"
     assert controller.clock is not None  # clock synced on first poll
 
     # Night indicator enabled; fan absent (fan_en=0); dropped entities gone
-    reg = er.async_get(hass)
     assert states["switch.aquarium_night_indicator"].state == "on"
     assert not any(e.startswith(("fan.", "text.")) for e in states)
     assert "button.aquarium_sync_clock" not in states
 
-    # Schedule mode: channel lights hidden, the main light and mode switch shown
-    assert reg.async_get("light.aquarium_blue").hidden_by is er.RegistryEntryHider.INTEGRATION
-    assert reg.async_get("light.aquarium").hidden_by is None
-    assert reg.async_get("switch.aquarium_manual_mode").hidden_by is None
+    # Only the combined light: no per-channel lights
+    assert [e for e in states if e.startswith("light.")] == ["light.aquarium"]
 
-    # Set one channel -> manual mode entered, other levels preserved
+    # Hand mode on -> current levels kept
     await hass.services.async_call(
-        "light", "turn_on",
-        {"entity_id": "light.aquarium_blue", "brightness_pct": 40}, blocking=True,
+        "switch", "turn_on", {"entity_id": "switch.aquarium_manual_mode"}, blocking=True
     )
     await hass.async_block_till_done()
-    assert controller.levels == [58, 9, 40, 9, 9], controller.levels
+    assert controller.levels == [58, 9, 9, 9, 9], controller.levels
     assert controller.hand == 1 and controller.block == 1 and controller.pwm_man
-    assert hass.states.get("switch.aquarium_manual_mode").state == "on"
-    assert hass.states.get("light.aquarium_blue").attributes["brightness"] == 102
-    assert reg.async_get("light.aquarium_blue").hidden_by is None  # shown in hand mode
+    assert hass.states.get("light.aquarium").attributes["mode"] == "manual"
 
     # Combined light: pure warm white at 50 %
     await hass.services.async_call(
@@ -114,6 +109,10 @@ async def test_full(hass: HomeAssistant, controller: Controller) -> None:
     await hass.async_block_till_done()
     assert controller.levels == [0, 0, 0, 0, 0]
     assert hass.states.get("light.aquarium").state == "off"
+    # Stays off after a poll: in hand mode /curlevelrange still reports the schedule
+    await entry.runtime_data.coordinator.async_refresh()
+    await hass.async_block_till_done()
+    assert hass.states.get("light.aquarium").state == "off"
     await hass.services.async_call("light", "turn_on", {"entity_id": "light.aquarium"}, blocking=True)
     await hass.async_block_till_done()
     assert controller.levels == [0, 0, 0, 100, 0], controller.levels
@@ -124,14 +123,8 @@ async def test_full(hass: HomeAssistant, controller: Controller) -> None:
     )
     await hass.async_block_till_done()
     assert controller.hand == 0 and controller.block == 0 and not controller.pwm_man
-    assert controller.levels == [58, 9, 9, 9, 9]
+    assert hass.states.get("light.aquarium").attributes["cool_white_level"] == 58  # schedule output
     assert hass.states.get("light.aquarium").attributes["mode"] == "schedule"
-    assert reg.async_get("light.aquarium_blue").hidden_by is er.RegistryEntryHider.INTEGRATION
-
-    # A user's own unhide is kept across mode changes
-    reg.async_update_entity("light.aquarium_red", hidden_by=er.RegistryEntryHider.USER)
-    await entry.runtime_data.coordinator.async_refresh()
-    assert reg.async_get("light.aquarium_red").hidden_by is er.RegistryEntryHider.USER
 
     # Unload
     assert await hass.config_entries.async_unload(entry.entry_id)
@@ -184,7 +177,10 @@ async def test_card_is_served(hass: HomeAssistant, controller: Controller, hass_
     hass.config.components.add("frontend")
     with patch("homeassistant.components.frontend.add_extra_js_url") as add_js:
         await _setup(hass, controller.host)
-    add_js.assert_called_once_with(hass, "/rival_aqua/rival-aqua-schedule-card.js?v=0.4.0")
+    version = json.loads(
+        (Path(__file__).parent.parent / "custom_components/rival_aqua/manifest.json").read_text()
+    )["version"]
+    add_js.assert_called_once_with(hass, f"/rival_aqua/rival-aqua-schedule-card.js?v={version}")
     client = await hass_client()
     resp = await client.get("/rival_aqua/rival-aqua-schedule-card.js")
     assert resp.status == 200
@@ -231,7 +227,7 @@ async def test_schedule_actions(hass: HomeAssistant, controller: Controller) -> 
 
     # Manual mode on, then save a new schedule (mixed list / name mapping, unsorted)
     await hass.services.async_call(
-        "light", "turn_on", {"entity_id": "light.aquarium_red", "brightness_pct": 80}, blocking=True
+        "light", "turn_on", {"entity_id": "light.aquarium", "brightness_pct": 80}, blocking=True
     )
     assert controller.block == 1
     await hass.services.async_call(
@@ -255,8 +251,10 @@ async def test_schedule_actions(hass: HomeAssistant, controller: Controller) -> 
     i = log.index("/pointtimes?pn=4&p0=480&p1=600&p2=1140&p3=1290")
     assert log[i + 1 : i + 10] == [f"/pointch?ch={c}" + controller_points_qs(controller, c) for c in range(9)]
     assert log[i + 10 : i + 12] == ["/pwm_man?state=false", "/blockrangeset?state=false"]
-    sched = hass.states.get("light.aquarium_cool_white").attributes["schedule"]
-    assert sched["10:00"] == 70 and sched["19:00"] == 70
+    sched = await hass.services.async_call(
+        DOMAIN, "get_schedule", {"config_entry_id": entry.entry_id}, blocking=True, return_response=True
+    )
+    assert {p["time"]: p["levels"][0] for p in sched["points"]}["10:00"] == 70
 
     # Validation
     bad = [
