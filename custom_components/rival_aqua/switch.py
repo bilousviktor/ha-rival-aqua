@@ -1,4 +1,4 @@
-"""Switches for Rival Aqua: manual (hand) mode and the night indicator."""
+"""Switch for Rival Aqua: the night indicator."""
 
 from __future__ import annotations
 
@@ -21,31 +21,7 @@ async def async_setup_entry(
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
     coordinator = entry.runtime_data.coordinator
-    async_add_entities(
-        [
-            RivalManualModeSwitch(coordinator),
-            RivalNightIndicatorSwitch(coordinator),
-        ]
-    )
-
-
-class RivalManualModeSwitch(RivalEntity, SwitchEntity):
-    """On = manual levels; off = follow the controller's daily schedule."""
-
-    _attr_translation_key = "manual_mode"
-
-    def __init__(self, coordinator: RivalCoordinator) -> None:
-        super().__init__(coordinator, "manual_mode")
-
-    @property
-    def is_on(self) -> bool:
-        return bool(self.coordinator.data and self.coordinator.data.manual)
-
-    async def async_turn_on(self, **kwargs: Any) -> None:
-        await self.coordinator.async_set_manual(True)
-
-    async def async_turn_off(self, **kwargs: Any) -> None:
-        await self.coordinator.async_set_manual(False)
+    async_add_entities([RivalNightIndicatorSwitch(coordinator)])
 
 
 class RivalNightIndicatorSwitch(RivalEntity, SwitchEntity):

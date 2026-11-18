@@ -31,7 +31,7 @@ PLATFORMS: list[Platform] = [
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 # Entities dropped in 0.5.x (unique id suffixes); removed from the registry on setup.
-_REMOVED_KEYS = ("_sync_time", "_cooler_enabled")
+_REMOVED_KEYS = ("_sync_time", "_cooler_enabled", "_manual_mode")
 _REMOVED_KEY_PATTERN = re.compile(r"_channel_\d+(_name|_color)?$")  # channel lights, names, colours
 
 

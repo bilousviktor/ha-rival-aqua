@@ -8,8 +8,7 @@ over your LAN.
 
 | Entity | What it does |
 |---|---|
-| `light.<name>` | All channels as one light (there are no per-channel lights). With the stock channels (Cool White, Green, Blue, Warm White, Red) it's an **RGBWW** light; otherwise brightness-only, scaling the current mix. |
-| `switch.<name>_manual_mode` | Auto/hand toggle. **On** = manual levels, **off** = the controller follows its own daily schedule. |
+| `light.<name>` | The only control: all channels as one light. **On** = follow the daily schedule (at night, when the schedule is dark, it restores the last lit mix instead). **Off**, or on with a brightness/colour = manual mode. With the stock channels (Cool White, Green, Blue, Warm White, Red) it's an **RGBWW** light; otherwise brightness-only, scaling the current mix. |
 | `fan.<name>_cooler` | Only if the cooler is enabled on the controller. |
 
 The controller clock is synced from HA automatically every 6 h.
@@ -85,7 +84,7 @@ Up to 16 points; times strictly increasing; the light ramps linearly between poi
 turns manual mode off so the new schedule takes effect immediately.
 
 **Any change from Home Assistant switches the controller to manual mode** (the schedule pauses), like
-the hand icon in the web UI. Turn **Manual mode** off to resume the schedule.
+the hand icon in the web UI. Turn the light **on** (no brightness or colour) to resume the schedule.
 
 ## Install
 
@@ -116,8 +115,8 @@ Then go to *Settings → Devices & services → Add integration → Rival Aqua* 
       target: { entity_id: light.aquarium }
       data: { rgbww_color: [0, 0, 255, 0, 0], brightness_pct: 15 }
     - delay: "00:10:00"
-    - action: switch.turn_off
-      target: { entity_id: switch.aquarium_manual_mode }
+    - action: light.turn_on  # no brightness/colour: back to the schedule
+      target: { entity_id: light.aquarium }
 ```
 
 ## Controller API (reverse-engineered from its web UI)

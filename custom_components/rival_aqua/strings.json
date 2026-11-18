@@ -19,9 +19,6 @@
   },
   "entity": {
     "switch": {
-      "manual_mode": {
-        "name": "Manual mode"
-      },
       "night_indicator": {
         "name": "Night indicator"
       }

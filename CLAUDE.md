@@ -14,7 +14,8 @@ Local polling over HTTP, no cloud. Distributed via HACS.
   (the client serialises them with a lock).
 - No NTP: the clock is set via `/synchtime`. The integration syncs it every 6 h.
 - Manual mode = `/handmode?onoff=1` + `/pwm_man?state=true` + `/blockrangeset?state=true`.
-  Any HA light change enters manual mode first. The "Manual mode" switch off resumes the schedule.
+  Light off, or on with brightness/colour, enters manual mode first. Light on with no parameters
+  resumes the schedule (at night it restores the last lit mix in manual mode). There is no manual-mode switch.
 - Reading levels: `/curlevelrange` always reports the **schedule** levels, even in manual mode. In manual
   mode the output is `/chmanlvl?ch=N` (per channel, 8 = cooler). Manual levels stay stored after the
   schedule resumes. Verified on hardware 2026-11-18.
@@ -33,7 +34,7 @@ Local polling over HTTP, no cloud. Distributed via HACS.
   manual levels), and leaving manual mode.
 - Not yet verified on real hardware: whether the schedule save
   round-trips (save the current schedule unchanged, then check `/chartdata.js` is identical).
-  Also unverified: every settings write (`/saveparam` + `/savenamechan`, `/color`, `/fanenset`,
+  Also unverified: every settings write (`/saveparam` + `/savenamechan`,
   Wi-Fi join/forget, `/setdefault`); in particular whether `/saveparam` restarts the hotspot or reboots.
 - Never commit real values read from the controller (hotspot password, nearby SSIDs): the repo is public.
 
@@ -43,8 +44,8 @@ Local polling over HTTP, no cloud. Distributed via HACS.
 - `coordinator.py`: DataUpdateCoordinator, 10 s poll, write helpers that raise HomeAssistantError.
 - `light.py`: one combined RGBWW light (maps the 5 channels by name, see `levels.py`). No per-channel
   lights: HA's device page can't hide entities (`hidden_by` only labels them), so they were dropped.
-- `switch.py` (manual mode, night indicator), `button.py` (restart), `fan.py` (cooler, only if enabled),
-  `sensor.py` (network, diagnostic). Device page: Controls = main light + manual mode;
+- `switch.py` (night indicator), `button.py` (restart), `fan.py` (cooler, only if enabled),
+  `sensor.py` (network, diagnostic). Device page: Controls = the light only;
   Configuration = restart + night indicator. Entities dropped in 0.5.x are removed from
   the registry in `__init__._async_remove_old_entities`.
 - `services.py`: schedule get/set, plus hotspot, Wi-Fi scan/join/forget and factory reset.

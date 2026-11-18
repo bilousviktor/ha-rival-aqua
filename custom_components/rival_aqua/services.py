@@ -59,15 +59,13 @@ POINT_SCHEMA = vol.Schema(
 )
 
 # The controller is optional when only one is configured (the dashboard card relies on this).
-GET_SCHEMA = vol.Schema({vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string})
+ENTRY_SCHEMA = vol.Schema({vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string})
 SET_SCHEMA = vol.Schema(
     {
         vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
         vol.Required(ATTR_POINTS): vol.All(cv.ensure_list, [POINT_SCHEMA]),
     }
 )
-
-ENTRY_SCHEMA = vol.Schema({vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string})
 HOTSPOT_SCHEMA = vol.Schema(
     {
         vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
@@ -234,7 +232,7 @@ def async_setup_services(hass: HomeAssistant) -> None:
         DOMAIN,
         SERVICE_GET_SCHEDULE,
         get_schedule,
-        schema=GET_SCHEMA,
+        schema=ENTRY_SCHEMA,
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(

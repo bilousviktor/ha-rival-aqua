@@ -31,10 +31,6 @@ WIFI_TIMEOUT = aiohttp.ClientTimeout(total=30)
 # Validation from config.html (the web UI's own input patterns).
 HOTSPOT_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{4,20}$")
 HOTSPOT_PASSWORD_RE = re.compile(r"^[0-9]{8,12}$")
-CHANNEL_NAME_MAX = 25
-# Names end up inside a JS string literal in namechannellist.js: keep quotes/backslashes out.
-CHANNEL_NAME_RE = re.compile(r"^[^'\"\\\x00-\x1f]{1,25}$")
-COLOR_RE = re.compile(r"^#?([0-9A-Fa-f]{6})$")
 
 
 class RivalError(Exception):
@@ -51,7 +47,6 @@ class RivalInfo:
 
     channel_count: int
     fan_enabled: bool
-    night_indicator: bool
     channel_names: list[str]
     channel_colors: list[str]
     version: str | None = None
@@ -111,23 +106,6 @@ def _parse_js_vars(js: str) -> dict[str, str]:
             for m in re.finditer(r"var\s+(\w+)\s*=\s*(['\"])(?:([^']*)'|([^\"]*)\")", js)
         )
     }
-
-
-def validate_channel_name(name: str) -> str:
-    name = name.strip()
-    if not CHANNEL_NAME_RE.match(name):
-        raise ValueError(
-            f"Channel name must be 1-{CHANNEL_NAME_MAX} characters without quotes or backslashes"
-        )
-    return name
-
-
-def normalize_color(color: str) -> str:
-    """'#a1b2c3' / 'A1B2C3' -> '#A1B2C3'."""
-    match = COLOR_RE.match(color.strip())
-    if not match:
-        raise ValueError(f"Colour must be #RRGGBB, got {color!r}")
-    return f"#{match.group(1).upper()}"
 
 
 def _parse_schedule(js: str) -> list[list[SchedulePoint]]:
@@ -229,13 +207,12 @@ class RivalAquaClient:
     # ------------------------------------------------------------------ read
 
     async def async_get_info(self) -> RivalInfo:
-        """Read channel count, fan/indicator flags, names, colours, version."""
+        """Read channel count, fan flag, names, colours, version."""
         chnumb = await self._get("/chnumb")
         parts = [p.strip() for p in chnumb.split(",")]
         try:
             count = int(parts[0])
             fan = len(parts) > 1 and int(parts[1]) == 1
-            stat = len(parts) > 2 and int(parts[2]) == 1
         except (ValueError, IndexError) as err:
             raise RivalError(f"Unexpected /chnumb response: {chnumb!r}") from err
 
@@ -253,7 +230,6 @@ class RivalAquaClient:
         self.info = RivalInfo(
             channel_count=count,
             fan_enabled=fan,
-            night_indicator=stat,
             channel_names=names,
             channel_colors=colors,
             version=version,
@@ -406,43 +382,26 @@ class RivalAquaClient:
         name = _parse_js_vars(setup).get("WifiPointName") if setup else None
         return RivalNetwork(ip=ip or None, home_network=home, hotspot_name=name)
 
-    async def async_set_fan_enabled(self, enabled: bool) -> None:
-        """Enable/disable the cooler channel ("Вентилятор"). Changes /chnumb."""
-        await self._get("/fanenset", {"state": "true" if enabled else "false"})
-
-    async def async_set_color(self, channel: int, color: str) -> None:
-        """Display colour of a channel (8 = cooler); applied immediately, no Save needed."""
-        await self._get("/color", {"range": channel, "level": normalize_color(color)[1:]})
-
-    async def async_save_settings(
-        self,
-        *,
-        hotspot_name: str | None = None,
-        hotspot_password: str | None = None,
-        channel_names: list[str] | None = None,
+    async def async_set_hotspot(
+        self, name: str | None = None, password: str | None = None
     ) -> None:
         """The settings page's Save: /saveparam (hotspot) then /savenamechan (channel names).
 
-        The web UI always sends both, so values not given are re-sent unchanged.
+        The web UI always sends both, so values not given (and the channel names)
+        are re-sent unchanged.
         """
         current = _parse_js_vars(await self._get("/wifisetup.js"))
-        name = hotspot_name if hotspot_name is not None else current.get("WifiPointName", "")
-        password = (
-            hotspot_password if hotspot_password is not None else current.get("WifiPointPass", "")
-        )
+        if name is None:
+            name = current.get("WifiPointName", "")
+        if password is None:
+            password = current.get("WifiPointPass", "")
         if not HOTSPOT_NAME_RE.match(name):
             raise ValueError("Hotspot name must be 4-20 letters, digits, '-' or '_'")
         if not HOTSPOT_PASSWORD_RE.match(password):
             raise ValueError("Hotspot password must be 8-12 digits")
 
         info = self.info or await self.async_get_info()
-        names = list(info.channel_names[: info.channel_count])
-        if channel_names is not None:
-            if len(channel_names) != info.channel_count:
-                raise ValueError(f"Expected {info.channel_count} channel names")
-            names = channel_names
-        names = [validate_channel_name(n) for n in names]
-
+        names = [n.strip() for n in info.channel_names[: info.channel_count]]
         await self._get("/saveparam", {"namepoint": name, "passpoint": password})
         await self._get("/savenamechan", {f"name{i}": n for i, n in enumerate(names)})
 

@@ -4,8 +4,10 @@
   Red channels it uses HA's RGBWW colour mode; otherwise it is a brightness
   light that scales the current channel mix.
 
-Any change made from Home Assistant puts the controller into manual mode
-(the daily schedule pauses). Turn the "Manual mode" switch off to resume it.
+Off, or on with a brightness or colour, puts the controller into manual
+mode (the daily schedule pauses). On without parameters resumes the
+schedule; if the schedule is dark at that moment (night), it restores the
+last mix in manual mode instead.
 """
 
 from __future__ import annotations
@@ -25,7 +27,7 @@ from .coordinator import RivalConfigEntry, RivalCoordinator
 from .entity import RivalEntity
 from .levels import (
     level_to_brightness,
-    levels_to_brightness_and_rgbww,
+    levels_to_rgbww,
     mix_ratios,
     rgbww_slots,
     rgbww_to_levels,
@@ -43,7 +45,6 @@ async def async_setup_entry(
 ) -> None:
     coordinator = entry.runtime_data.coordinator
     async_add_entities([RivalMainLight(coordinator)])
-
 
 
 class RivalMainLight(RivalEntity, LightEntity):
@@ -85,7 +86,7 @@ class RivalMainLight(RivalEntity, LightEntity):
         if not self._slots:
             return None
         levels = self._levels if any(self._levels) else (self._last_levels or self._levels)
-        return levels_to_brightness_and_rgbww(levels, self._slots)[1]
+        return levels_to_rgbww(levels, self._slots)
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -110,6 +111,17 @@ class RivalMainLight(RivalEntity, LightEntity):
         return peaks if any(peaks) else [FALLBACK_LEVEL] * self._count
 
     async def async_turn_on(self, **kwargs: Any) -> None:
+        data = self.coordinator.data
+        if ATTR_BRIGHTNESS not in kwargs and ATTR_RGBWW_COLOR not in kwargs:
+            if data is not None and not data.manual and any(self._levels):
+                return  # already following a lit schedule
+            restore = self._restore_levels()
+            await self.coordinator.async_resume_schedule()
+            if any(self._levels):
+                return  # the schedule is lit right now
+            await self.coordinator.async_set_levels(restore)  # night: last mix, manual
+            return
+
         current = self._levels if any(self._levels) else self._restore_levels()
         cur_brightness = level_to_brightness(max(current))
         brightness = kwargs.get(ATTR_BRIGHTNESS, cur_brightness)
@@ -125,7 +137,5 @@ class RivalMainLight(RivalEntity, LightEntity):
         await self.coordinator.async_set_levels(levels)
 
     async def async_turn_off(self, **kwargs: Any) -> None:
-        if any(self._levels):
-            self._last_levels = self._levels
         await self.coordinator.async_set_levels([0] * self._count)
 

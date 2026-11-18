@@ -114,14 +114,6 @@ class Controller:
             self.factory_resets += 1; return txt("OK")
         add("/setdefault", setdefault)
 
-        def fanenset(q):
-            self.fan = q.query["state"] == "true"; return txt("OK")
-        add("/fanenset", fanenset)
-
-        def color(q):
-            self.colors[int(q.query["range"])] = "#" + q.query["level"]; return txt("OK")
-        add("/color", color)
-
         def saveparam(q):
             self.hotspot = (q.query["namepoint"], q.query["passpoint"]); return txt("OK")
         add("/saveparam", saveparam)
@@ -132,10 +124,6 @@ class Controller:
             return txt("OK")
         add("/savenamechan", savenamechan)
 
-        def preset(q):
-            rows = [self.times] + self.points
-            return txt("\n".join("".join(f"{v}," for v in row) for row in rows) + "\n")
-        add("/user_preset.csv", preset)
         add("/curver", lambda q: txt("2.1"))
         add("/chartdata.js", lambda q: js(self.chartdata()))
 

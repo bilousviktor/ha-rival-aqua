@@ -114,11 +114,6 @@ class RivalCoordinator(DataUpdateCoordinator[RivalState]):
         _LOGGER.debug("Synced controller clock to %s", now.strftime("%H:%M:%S"))
 
     @_raise_ha_error
-    async def async_sync_time(self) -> None:
-        self._last_time_sync = None
-        await self._async_maybe_sync_time()
-
-    @_raise_ha_error
     async def async_set_night_indicator(self, enabled: bool) -> None:
         await self.client.async_set_night_indicator(enabled)
         await self.async_request_refresh()
@@ -152,11 +147,8 @@ class RivalCoordinator(DataUpdateCoordinator[RivalState]):
             self.async_set_updated_data(self.data)
 
     @_raise_ha_error
-    async def async_set_manual(self, enabled: bool) -> None:
-        if enabled:
-            await self.async_ensure_manual()
-        else:
-            await self.client.async_set_manual(False)
+    async def async_resume_schedule(self) -> None:
+        await self.client.async_set_manual(False)
         # Mode changes alter every level at once: poll right away, not debounced.
         await self.async_refresh()
 
@@ -180,13 +172,9 @@ class RivalCoordinator(DataUpdateCoordinator[RivalState]):
 
     # ------------------------------------------------------------ settings
 
-    def _reload(self) -> None:
-        """Re-create the entities from fresh /chnumb, names and colours."""
-        self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
-
     @_raise_ha_error
     async def async_set_hotspot(self, name: str | None, password: str | None) -> None:
-        await self.client.async_save_settings(hotspot_name=name, hotspot_password=password)
+        await self.client.async_set_hotspot(name, password)
         self.network = await self.client.async_get_network()
         self.async_update_listeners()
 
@@ -197,7 +185,8 @@ class RivalCoordinator(DataUpdateCoordinator[RivalState]):
     @_raise_ha_error
     async def async_factory_reset(self) -> None:
         await self.client.async_factory_reset()
-        self._reload()
+        # Re-create the entities from fresh /chnumb, names and colours.
+        self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
 
     @_raise_ha_error
     async def async_scan_wifi(self) -> list[str]:

@@ -20,7 +20,7 @@ async def main():
     async with aiohttp.ClientSession() as s:
         c = api.RivalAquaClient("127.0.0.1:8765", s)
         info = await c.async_get_info()
-        assert info.channel_count == 5 and not info.fan_enabled and info.night_indicator, info
+        assert info.channel_count == 5 and not info.fan_enabled, info
         assert info.channel_names[:5] == ["Cool White", "Green", "Blue", "Warm White", "Red"], info.channel_names
         assert info.version == "2.1"
         st = await c.async_get_state(include_schedule=True)

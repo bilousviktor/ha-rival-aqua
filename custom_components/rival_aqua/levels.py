@@ -9,11 +9,6 @@ def level_to_brightness(level: int) -> int:
     return round(max(0, min(100, level)) * 255 / 100)
 
 
-def brightness_to_level(brightness: int) -> int:
-    level = round(max(0, min(255, brightness)) * 100 / 255)
-    return max(1, level) if brightness > 0 else 0
-
-
 def rgbww_slots(names: list[str], count: int) -> dict[int, int] | None:
     """Map channel index -> RGBWW tuple slot, or None if channels don't fit RGBWW.
 
@@ -30,15 +25,16 @@ def rgbww_slots(names: list[str], count: int) -> dict[int, int] | None:
     return slots if len(slots) == 5 else None
 
 
-def levels_to_brightness_and_rgbww(
+def levels_to_rgbww(
     levels: list[int], slots: dict[int, int]
-) -> tuple[int, tuple[int, int, int, int, int]]:
+) -> tuple[int, int, int, int, int]:
+    """The channel mix as an RGBWW colour, the strongest channel at 255."""
     peak = max(levels, default=0)
     rgbww = [0, 0, 0, 0, 0]
     if peak > 0:
         for idx, slot in slots.items():
             rgbww[slot] = round(levels[idx] / peak * 255)
-    return level_to_brightness(peak), tuple(rgbww)  # type: ignore[return-value]
+    return tuple(rgbww)  # type: ignore[return-value]
 
 
 def rgbww_to_levels(

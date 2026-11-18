@@ -19,9 +19,6 @@
   },
   "entity": {
     "switch": {
-      "manual_mode": {
-        "name": "Ручний режим"
-      },
       "night_indicator": {
         "name": "Нічна індикація"
       }

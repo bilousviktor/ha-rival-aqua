@@ -68,7 +68,7 @@ async def test_full(hass: HomeAssistant, controller: Controller) -> None:
     # R, G, B, CW, WW relative to the 58 % peak (cool white)
     assert main.attributes["rgbww_color"] == (40, 40, 40, 255, 40)
     assert main.attributes["mode"] == "schedule"
-    assert states["switch.aquarium_manual_mode"].state == "off"
+    assert "switch.aquarium_manual_mode" not in states  # the light is the only control
     assert controller.clock is not None  # clock synced on first poll
 
     # Night indicator enabled; fan absent (fan_en=0); dropped entities gone
@@ -79,16 +79,12 @@ async def test_full(hass: HomeAssistant, controller: Controller) -> None:
     # Only the combined light: no per-channel lights
     assert [e for e in states if e.startswith("light.")] == ["light.aquarium"]
 
-    # Hand mode on -> current levels kept
-    await hass.services.async_call(
-        "switch", "turn_on", {"entity_id": "switch.aquarium_manual_mode"}, blocking=True
-    )
-    await hass.async_block_till_done()
-    assert controller.levels == [58, 9, 9, 9, 9], controller.levels
-    assert controller.hand == 1 and controller.block == 1 and controller.pwm_man
-    assert hass.states.get("light.aquarium").attributes["mode"] == "manual"
+    # On while the schedule is lit: nothing to do
+    controller.log.clear()
+    await hass.services.async_call("light", "turn_on", {"entity_id": "light.aquarium"}, blocking=True)
+    assert not any(l.startswith(("/light", "/handmode")) for l in controller.log), controller.log
 
-    # Combined light: pure warm white at 50 %
+    # Combined light: pure warm white at 50 % -> manual mode
     await hass.services.async_call(
         "light", "turn_on",
         {"entity_id": "light.aquarium", "rgbww_color": [0, 0, 0, 0, 255], "brightness": 128},
@@ -96,6 +92,8 @@ async def test_full(hass: HomeAssistant, controller: Controller) -> None:
     )
     await hass.async_block_till_done()
     assert controller.levels == [0, 0, 0, 50, 0], controller.levels
+    assert controller.hand == 1 and controller.block == 1 and controller.pwm_man
+    assert hass.states.get("light.aquarium").attributes["mode"] == "manual"
 
     # Brightness only keeps the mix
     await hass.services.async_call(
@@ -104,7 +102,7 @@ async def test_full(hass: HomeAssistant, controller: Controller) -> None:
     await hass.async_block_till_done()
     assert controller.levels == [0, 0, 0, 100, 0], controller.levels
 
-    # Off, then on without params restores the previous mix
+    # Off -> manual mode, all channels 0
     await hass.services.async_call("light", "turn_off", {"entity_id": "light.aquarium"}, blocking=True)
     await hass.async_block_till_done()
     assert controller.levels == [0, 0, 0, 0, 0]
@@ -113,18 +111,23 @@ async def test_full(hass: HomeAssistant, controller: Controller) -> None:
     await entry.runtime_data.coordinator.async_refresh()
     await hass.async_block_till_done()
     assert hass.states.get("light.aquarium").state == "off"
+
+    # On without params -> back to the schedule
     await hass.services.async_call("light", "turn_on", {"entity_id": "light.aquarium"}, blocking=True)
     await hass.async_block_till_done()
-    assert controller.levels == [0, 0, 0, 100, 0], controller.levels
-
-    # Back to schedule
-    await hass.services.async_call(
-        "switch", "turn_off", {"entity_id": "switch.aquarium_manual_mode"}, blocking=True
-    )
-    await hass.async_block_till_done()
+    assert hass.states.get("light.aquarium").state == "on"
     assert controller.hand == 0 and controller.block == 0 and not controller.pwm_man
     assert hass.states.get("light.aquarium").attributes["cool_white_level"] == 58  # schedule output
     assert hass.states.get("light.aquarium").attributes["mode"] == "schedule"
+
+    # At night (schedule dark) on restores the last mix in manual mode
+    controller.schedule_levels = [0, 0, 0, 0, 0]
+    await entry.runtime_data.coordinator.async_refresh()
+    assert hass.states.get("light.aquarium").state == "off"
+    await hass.services.async_call("light", "turn_on", {"entity_id": "light.aquarium"}, blocking=True)
+    await hass.async_block_till_done()
+    assert controller.hand == 1 and controller.levels == [58, 9, 9, 9, 9], controller.levels  # last lit mix
+    assert hass.states.get("light.aquarium").state == "on"
 
     # Unload
     assert await hass.config_entries.async_unload(entry.entry_id)
