@@ -1,0 +1,66 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Rival Aqua controller",
+        "description": "Enter the IP address of the Rival WiFi controller on your network. Give it a DHCP reservation so the address doesn't change.",
+        "data": {
+          "host": "Host",
+          "name": "Name"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Could not reach the controller. Check the IP address and that Home Assistant can reach that network."
+    },
+    "abort": {
+      "already_configured": "This controller is already configured."
+    }
+  },
+  "entity": {
+    "switch": {
+      "manual_mode": {
+        "name": "Manual mode"
+      },
+      "night_indicator": {
+        "name": "Night indicator"
+      }
+    },
+    "button": {
+      "sync_time": {
+        "name": "Sync clock"
+      }
+    },
+    "fan": {
+      "cooler": {
+        "name": "Cooler"
+      }
+    }
+  },
+  "services": {
+    "get_schedule": {
+      "name": "Get schedule",
+      "description": "Returns the daily light schedule stored on the controller.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "The Rival Aqua controller. Can be left empty when only one is set up."
+        }
+      }
+    },
+    "set_schedule": {
+      "name": "Set schedule",
+      "description": "Writes and saves the daily light schedule on the controller (same as Save in its web page), then resumes it.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "The Rival Aqua controller. Can be left empty when only one is set up."
+        },
+        "points": {
+          "name": "Points",
+          "description": "Schedule points: time (HH:MM), levels (0-100 %, a list in channel order or a mapping of channel name to level) and optional fan. Up to 16 points; the light ramps linearly between them."
+        }
+      }
+    }
+  }
+}
