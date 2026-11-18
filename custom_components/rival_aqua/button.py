@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from homeassistant.components.button import ButtonEntity
+from homeassistant.components.button import ButtonDeviceClass, ButtonEntity
 from homeassistant.const import EntityCategory
 from homeassistant.core import HomeAssistant
 from homeassistant.helpers.entity_platform import AddConfigEntryEntitiesCallback
@@ -18,7 +18,8 @@ async def async_setup_entry(
     entry: RivalConfigEntry,
     async_add_entities: AddConfigEntryEntitiesCallback,
 ) -> None:
-    async_add_entities([RivalSyncTimeButton(entry.runtime_data.coordinator)])
+    coordinator = entry.runtime_data.coordinator
+    async_add_entities([RivalSyncTimeButton(coordinator), RivalRebootButton(coordinator)])
 
 
 class RivalSyncTimeButton(RivalEntity, ButtonEntity):
@@ -35,3 +36,16 @@ class RivalSyncTimeButton(RivalEntity, ButtonEntity):
 
     async def async_press(self) -> None:
         await self.coordinator.async_sync_time()
+
+
+class RivalRebootButton(RivalEntity, ButtonEntity):
+    """Restart the controller (settings page "Перезагрузка"). It reconnects on its own."""
+
+    _attr_device_class = ButtonDeviceClass.RESTART
+    _attr_entity_category = EntityCategory.CONFIG
+
+    def __init__(self, coordinator: RivalCoordinator) -> None:
+        super().__init__(coordinator, "reboot")
+
+    async def async_press(self) -> None:
+        await self.coordinator.async_reboot()

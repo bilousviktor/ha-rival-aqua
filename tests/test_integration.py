@@ -178,7 +178,7 @@ async def test_card_is_served(hass: HomeAssistant, controller: Controller, hass_
     hass.config.components.add("frontend")
     with patch("homeassistant.components.frontend.add_extra_js_url") as add_js:
         await _setup(hass, controller.host)
-    add_js.assert_called_once_with(hass, "/rival_aqua/rival-aqua-schedule-card.js?v=0.3.0")
+    add_js.assert_called_once_with(hass, "/rival_aqua/rival-aqua-schedule-card.js?v=0.4.0")
     client = await hass_client()
     resp = await client.get("/rival_aqua/rival-aqua-schedule-card.js")
     assert resp.status == 200

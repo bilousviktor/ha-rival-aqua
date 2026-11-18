@@ -25,6 +25,16 @@ SCHEDULE_CHANNELS = 9
 # The web UI allows 18 chart points including the fixed 00:00 and 24:00 ends.
 MAX_SCHEDULE_POINTS = 16
 REQUEST_TIMEOUT = aiohttp.ClientTimeout(total=8)
+# Wi-Fi scan / join block until the radio is done.
+WIFI_TIMEOUT = aiohttp.ClientTimeout(total=30)
+
+# Validation from config.html (the web UI's own input patterns).
+HOTSPOT_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{4,20}$")
+HOTSPOT_PASSWORD_RE = re.compile(r"^[0-9]{8,12}$")
+CHANNEL_NAME_MAX = 25
+# Names end up inside a JS string literal in namechannellist.js: keep quotes/backslashes out.
+CHANNEL_NAME_RE = re.compile(r"^[^'\"\\\x00-\x1f]{1,25}$")
+COLOR_RE = re.compile(r"^#?([0-9A-Fa-f]{6})$")
 
 
 class RivalError(Exception):
@@ -45,6 +55,15 @@ class RivalInfo:
     channel_names: list[str]
     channel_colors: list[str]
     version: str | None = None
+
+
+@dataclass
+class RivalNetwork:
+    """Network side of the controller (no password is kept here)."""
+
+    ip: str | None
+    home_network: str | None  # SSID it is joined to, "" when none
+    hotspot_name: str | None
 
 
 @dataclass
@@ -81,6 +100,34 @@ def _parse_js_string_array(js: str) -> list[str]:
         (single or double).strip()
         for single, double in re.findall(r"'([^']*)'|\"([^\"]*)\"", match.group(1))
     ]
+
+
+def _parse_js_vars(js: str) -> dict[str, str]:
+    """Parse `var A='x';var B="y";` into {A: x, B: y}."""
+    return {
+        name: single if single is not None and quote == "'" else double
+        for name, quote, single, double in (
+            (m.group(1), m.group(2), m.group(3), m.group(4))
+            for m in re.finditer(r"var\s+(\w+)\s*=\s*(['\"])(?:([^']*)'|([^\"]*)\")", js)
+        )
+    }
+
+
+def validate_channel_name(name: str) -> str:
+    name = name.strip()
+    if not CHANNEL_NAME_RE.match(name):
+        raise ValueError(
+            f"Channel name must be 1-{CHANNEL_NAME_MAX} characters without quotes or backslashes"
+        )
+    return name
+
+
+def normalize_color(color: str) -> str:
+    """'#a1b2c3' / 'A1B2C3' -> '#A1B2C3'."""
+    match = COLOR_RE.match(color.strip())
+    if not match:
+        raise ValueError(f"Colour must be #RRGGBB, got {color!r}")
+    return f"#{match.group(1).upper()}"
 
 
 def _parse_schedule(js: str) -> list[list[SchedulePoint]]:
@@ -155,17 +202,20 @@ class RivalAquaClient:
     def base_url(self) -> str:
         return self._base
 
-    async def _get(self, path: str, params: dict[str, Any] | None = None) -> str:
+    async def _get(
+        self,
+        path: str,
+        params: dict[str, Any] | None = None,
+        timeout: aiohttp.ClientTimeout = REQUEST_TIMEOUT,
+    ) -> str:
         url = f"{self._base}{path}"
         async with self._lock:
             try:
-                async with self._session.get(
-                    url, params=params, timeout=REQUEST_TIMEOUT
-                ) as resp:
+                async with self._session.get(url, params=params, timeout=timeout) as resp:
                     if resp.status != 200:
                         raise RivalConnectionError(f"{path} returned HTTP {resp.status}")
                     raw = await resp.read()
-            except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+            except (TimeoutError, aiohttp.ClientError) as err:
                 raise RivalConnectionError(f"{path}: {err}") from err
         return raw.decode("utf-8", errors="replace").strip()
 
@@ -316,3 +366,88 @@ class RivalAquaClient:
 
     async def async_set_night_indicator(self, enabled: bool) -> None:
         await self._get("/lightset", {"state": "true" if enabled else "false"})
+
+    # ------------------------------------------------------------- settings
+    # Everything below mirrors config.html / config.js.
+
+    async def async_get_network(self) -> RivalNetwork:
+        """IP, joined home network and hotspot name (each None if unreadable)."""
+
+        async def read(path: str) -> str | None:
+            try:
+                return await self._get(path)
+            except RivalConnectionError:
+                return None
+
+        ip = await read("/curip")
+        home = await read("/curhomelan")
+        setup = await read("/wifisetup.js")
+        name = _parse_js_vars(setup).get("WifiPointName") if setup else None
+        return RivalNetwork(ip=ip or None, home_network=home, hotspot_name=name)
+
+    async def async_set_fan_enabled(self, enabled: bool) -> None:
+        """Enable/disable the cooler channel ("Вентилятор"). Changes /chnumb."""
+        await self._get("/fanenset", {"state": "true" if enabled else "false"})
+
+    async def async_set_color(self, channel: int, color: str) -> None:
+        """Display colour of a channel (8 = cooler); applied immediately, no Save needed."""
+        await self._get("/color", {"range": channel, "level": normalize_color(color)[1:]})
+
+    async def async_save_settings(
+        self,
+        *,
+        hotspot_name: str | None = None,
+        hotspot_password: str | None = None,
+        channel_names: list[str] | None = None,
+    ) -> None:
+        """The settings page's Save: /saveparam (hotspot) then /savenamechan (channel names).
+
+        The web UI always sends both, so values not given are re-sent unchanged.
+        """
+        current = _parse_js_vars(await self._get("/wifisetup.js"))
+        name = hotspot_name if hotspot_name is not None else current.get("WifiPointName", "")
+        password = (
+            hotspot_password if hotspot_password is not None else current.get("WifiPointPass", "")
+        )
+        if not HOTSPOT_NAME_RE.match(name):
+            raise ValueError("Hotspot name must be 4-20 letters, digits, '-' or '_'")
+        if not HOTSPOT_PASSWORD_RE.match(password):
+            raise ValueError("Hotspot password must be 8-12 digits")
+
+        info = self.info or await self.async_get_info()
+        names = list(info.channel_names[: info.channel_count])
+        if channel_names is not None:
+            if len(channel_names) != info.channel_count:
+                raise ValueError(f"Expected {info.channel_count} channel names")
+            names = channel_names
+        names = [validate_channel_name(n) for n in names]
+
+        await self._get("/saveparam", {"namepoint": name, "passpoint": password})
+        await self._get("/savenamechan", {f"name{i}": n for i, n in enumerate(names)})
+
+    async def async_scan_wifi(self) -> list[str]:
+        """Scan for Wi-Fi networks; returns SSIDs (as the settings page's "Find networks")."""
+        await self._get("/scanlan", timeout=WIFI_TIMEOUT)
+        return [n for n in _parse_js_string_array(await self._get("/wifilist.js")) if n]
+
+    async def async_connect_wifi(self, ssid: str, password: str) -> bool:
+        """Join a home network. True when the controller answered "connect"."""
+        text = await self._get(
+            "/connectwifi", {"namewifi": ssid, "passwifi": password}, timeout=WIFI_TIMEOUT
+        )
+        return text == "connect"
+
+    async def async_forget_wifi(self) -> None:
+        """Forget the home network and reboot (back to hotspot-only mode)."""
+        await self._get("/connectwifi", {"namewifi": "", "passwifi": ""}, timeout=WIFI_TIMEOUT)
+        await self.async_reboot()
+
+    async def async_reboot(self) -> None:
+        try:
+            await self._get("/reboot")
+        except RivalConnectionError:
+            pass  # it may restart before answering
+
+    async def async_factory_reset(self) -> None:
+        """The settings page's "Сбросить" (reset to defaults)."""
+        await self._get("/setdefault")

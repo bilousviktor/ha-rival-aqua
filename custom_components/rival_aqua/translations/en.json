@@ -24,6 +24,9 @@
       },
       "night_indicator": {
         "name": "Night indicator"
+      },
+      "cooler_enabled": {
+        "name": "Cooler channel"
       }
     },
     "button": {
@@ -34,6 +37,28 @@
     "fan": {
       "cooler": {
         "name": "Cooler"
+      }
+    },
+    "text": {
+      "channel_name": {
+        "name": "Channel {number} name"
+      },
+      "channel_color": {
+        "name": "{channel} colour"
+      },
+      "cooler_color": {
+        "name": "Cooler colour"
+      }
+    },
+    "sensor": {
+      "ip_address": {
+        "name": "IP address"
+      },
+      "wifi_network": {
+        "name": "Wi-Fi network"
+      },
+      "hotspot_name": {
+        "name": "Hotspot name"
       }
     }
   },
@@ -59,6 +84,72 @@
         "points": {
           "name": "Points",
           "description": "Schedule points: time (HH:MM), levels (0-100 %, a list in channel order or a mapping of channel name to level) and optional fan. Up to 16 points; the light ramps linearly between them."
+        }
+      }
+    },
+    "set_hotspot": {
+      "name": "Set hotspot",
+      "description": "Changes the controller's own Wi-Fi hotspot name and/or password (Advanced settings → Save on its web page). Channel names are re-sent unchanged.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "The Rival Aqua controller. Can be left empty when only one is set up."
+        },
+        "name": {
+          "name": "Name",
+          "description": "4-20 letters, digits, '-' or '_'. Leave empty to keep the current one."
+        },
+        "password": {
+          "name": "Password",
+          "description": "8-12 digits. Leave empty to keep the current one."
+        }
+      }
+    },
+    "scan_wifi": {
+      "name": "Scan Wi-Fi networks",
+      "description": "Lists the Wi-Fi networks the controller can see.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "The Rival Aqua controller. Can be left empty when only one is set up."
+        }
+      }
+    },
+    "connect_wifi": {
+      "name": "Join Wi-Fi network",
+      "description": "Makes the controller join another home network. It leaves the current one, so Home Assistant loses it until you set up the integration with its new IP address.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "The Rival Aqua controller. Can be left empty when only one is set up."
+        },
+        "ssid": {
+          "name": "Network",
+          "description": "Network name (SSID), e.g. from Scan Wi-Fi networks."
+        },
+        "password": {
+          "name": "Password",
+          "description": "Network password."
+        }
+      }
+    },
+    "forget_wifi": {
+      "name": "Forget Wi-Fi network",
+      "description": "Forgets the home network and reboots the controller into hotspot-only mode. Home Assistant can't reach it afterwards; reconnect it through its hotspot web page.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "The Rival Aqua controller. Can be left empty when only one is set up."
+        }
+      }
+    },
+    "factory_reset": {
+      "name": "Factory reset",
+      "description": "Resets the controller's settings to defaults (Reset on its web page). Back up the schedule first.",
+      "fields": {
+        "config_entry_id": {
+          "name": "Controller",
+          "description": "The Rival Aqua controller. Can be left empty when only one is set up."
         }
       }
     }

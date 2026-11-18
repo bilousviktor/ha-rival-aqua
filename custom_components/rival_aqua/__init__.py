@@ -18,7 +18,14 @@ from .const import CARD_FILENAME, CARD_URL_PATH, DOMAIN
 from .coordinator import RivalConfigEntry, RivalCoordinator, RivalRuntimeData
 from .services import async_setup_services
 
-PLATFORMS: list[Platform] = [Platform.BUTTON, Platform.FAN, Platform.LIGHT, Platform.SWITCH]
+PLATFORMS: list[Platform] = [
+    Platform.BUTTON,
+    Platform.FAN,
+    Platform.LIGHT,
+    Platform.SENSOR,
+    Platform.SWITCH,
+    Platform.TEXT,
+]
 
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 

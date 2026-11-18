@@ -11,12 +11,20 @@ from typing import Any, Concatenate
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import HomeAssistantError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers.device_registry import DeviceInfo
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 from homeassistant.util import dt as dt_util
 
-from .api import FAN_CHANNEL, RivalAquaClient, RivalError, RivalInfo, RivalState
+from .api import (
+    FAN_CHANNEL,
+    RivalAquaClient,
+    RivalError,
+    RivalInfo,
+    RivalNetwork,
+    RivalState,
+    normalize_color,
+)
 from .const import DEFAULT_SCAN_INTERVAL, DOMAIN, MANUFACTURER, TIME_SYNC_INTERVAL
 
 _LOGGER = logging.getLogger(__name__)
@@ -35,6 +43,8 @@ def _raise_ha_error[**P, R](
             return await func(self, *args, **kwargs)
         except RivalError as err:
             raise HomeAssistantError(f"Rival controller error: {err}") from err
+        except ValueError as err:  # input rejected by the client's validation
+            raise ServiceValidationError(str(err)) from err
 
     return wrapper
 
@@ -68,6 +78,7 @@ class RivalCoordinator(DataUpdateCoordinator[RivalState]):
         self.info = info
         self._polls = 0
         self._last_time_sync: datetime | None = None
+        self.network = RivalNetwork(ip=None, home_network=None, hotspot_name=None)
 
     @property
     def device_info(self) -> DeviceInfo:
@@ -86,6 +97,8 @@ class RivalCoordinator(DataUpdateCoordinator[RivalState]):
         self._polls += 1
         try:
             state = await self.client.async_get_state(include_schedule=include_schedule)
+            if include_schedule:  # same slow cadence for the network details
+                self.network = await self.client.async_get_network()
             await self._async_maybe_sync_time()
         except RivalError as err:
             raise UpdateFailed(str(err)) from err
@@ -176,6 +189,60 @@ class RivalCoordinator(DataUpdateCoordinator[RivalState]):
         await self.client.async_set_manual(False)
         self._polls = 0  # re-read chartdata.js on this refresh
         await self.async_refresh()
+
+    # ------------------------------------------------------------ settings
+
+    def _reload(self) -> None:
+        """Re-create the entities from fresh /chnumb, names and colours."""
+        self.hass.config_entries.async_schedule_reload(self.config_entry.entry_id)
+
+    @_raise_ha_error
+    async def async_set_fan_enabled(self, enabled: bool) -> None:
+        await self.client.async_set_fan_enabled(enabled)
+        self._reload()  # adds/removes the cooler fan entity
+
+    @_raise_ha_error
+    async def async_set_channel_name(self, channel: int, name: str) -> None:
+        names = list(self.info.channel_names[: self.info.channel_count])
+        names[channel] = name
+        await self.client.async_save_settings(channel_names=names)
+        self._reload()  # entity names and the RGBWW mapping follow channel names
+
+    @_raise_ha_error
+    async def async_set_channel_color(self, channel: int, color: str) -> None:
+        color = normalize_color(color)
+        await self.client.async_set_color(channel, color)
+        colors = self.info.channel_colors + [""] * (9 - len(self.info.channel_colors))
+        colors[channel] = color
+        self.info.channel_colors = colors
+        self.async_update_listeners()
+
+    @_raise_ha_error
+    async def async_set_hotspot(self, name: str | None, password: str | None) -> None:
+        await self.client.async_save_settings(hotspot_name=name, hotspot_password=password)
+        self.network = await self.client.async_get_network()
+        self.async_update_listeners()
+
+    @_raise_ha_error
+    async def async_reboot(self) -> None:
+        await self.client.async_reboot()
+
+    @_raise_ha_error
+    async def async_factory_reset(self) -> None:
+        await self.client.async_factory_reset()
+        self._reload()
+
+    @_raise_ha_error
+    async def async_scan_wifi(self) -> list[str]:
+        return await self.client.async_scan_wifi()
+
+    @_raise_ha_error
+    async def async_connect_wifi(self, ssid: str, password: str) -> bool:
+        return await self.client.async_connect_wifi(ssid, password)
+
+    @_raise_ha_error
+    async def async_forget_wifi(self) -> None:
+        await self.client.async_forget_wifi()
 
     async def _apply_local(self, levels: list[int]) -> None:
         """Optimistically publish new levels, then confirm with a poll."""

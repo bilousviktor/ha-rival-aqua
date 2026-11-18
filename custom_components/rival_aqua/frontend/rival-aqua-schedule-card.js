@@ -14,7 +14,7 @@
  * Served and loaded by the integration itself; no build step, no dependencies.
  */
 
-const CARD_VERSION = "0.3.0";
+const CARD_VERSION = "0.4.0";
 const DOMAIN = "rival_aqua";
 const DAY = 24 * 60;
 const SNAP = 5; // minutes; hold Shift while dragging for 1-minute steps
@@ -44,6 +44,10 @@ const STRINGS = {
     discard: "Discard unsaved changes and reload from the controller?",
     prev: "Previous point",
     next: "Next point",
+    backup: "Download schedule (CSV, same as the controller's preset file)",
+    restore: "Load schedule from a CSV file",
+    restored: "Loaded {n} points from {file}. Check them, then press Save.",
+    badFile: "Not a Rival Aqua schedule file: {why}",
   },
   uk: {
     title: "Розклад світла",
@@ -69,6 +73,10 @@ const STRINGS = {
     discard: "Відкинути незбережені зміни й перечитати з контролера?",
     prev: "Попередня точка",
     next: "Наступна точка",
+    backup: "Завантажити розклад (CSV, як файл пресету контролера)",
+    restore: "Відкрити розклад із CSV-файлу",
+    restored: "Завантажено {n} точок із {file}. Перевірте їх і натисніть «Зберегти».",
+    badFile: "Це не файл розкладу Rival Aqua: {why}",
   },
 };
 
@@ -109,6 +117,52 @@ export function interpolate(points, series, t) {
     }
   }
   return 0;
+}
+
+/**
+ * The controller's preset file (/user_preset.csv): a row of point times in minutes, then one row of
+ * levels per channel 0-8 (8 = cooler), every value followed by a comma.
+ */
+export function scheduleToCsv(points, channelCount, hasFan) {
+  const rows = [points.map((p) => p.t)];
+  for (let ch = 0; ch < 9; ch++) {
+    const s = ch < channelCount ? ch : ch === 8 && hasFan ? channelCount : -1;
+    rows.push(points.map((p) => (s < 0 ? 0 : p.v[s])));
+  }
+  return rows.map((r) => r.map((v) => `${v},`).join("")).join("\n") + "\n";
+}
+
+/** Parse a preset CSV into editor points; throws Error with a short reason. */
+export function csvToSchedule(text, channelCount, hasFan, maxPoints) {
+  const rows = text
+    .split(/\r?\n/)
+    .map((l) => l.trim())
+    .filter(Boolean)
+    .map((l) => l.split(",").map((x) => x.trim()).filter((x) => x !== ""));
+  const bad = (why) => {
+    throw new Error(why);
+  };
+  if (!rows.length) bad("empty file");
+  for (const row of rows) for (const x of row) if (!/^\d+$/.test(x)) bad(`unexpected value "${x.slice(0, 20)}"`);
+  const times = rows[0].map(Number);
+  const n = times.length;
+  if (n < 1 || n > maxPoints) bad(`${n} points (1-${maxPoints} allowed)`);
+  times.forEach((t, i) => {
+    if (t >= 24 * 60) bad(`time ${t} is past 23:59`);
+    if (i && t <= times[i - 1]) bad("times are not increasing");
+  });
+  const level = (ch, i) => {
+    const row = rows[1 + ch];
+    if (!row) return 0;
+    if (row.length !== n) bad(`channel ${ch + 1} has ${row.length} values for ${n} points`);
+    const v = Number(row[i]);
+    if (v > 100) bad(`level ${v} is over 100`);
+    return v;
+  };
+  return times.map((t, i) => ({
+    t,
+    v: [...Array.from({ length: channelCount }, (_, ch) => level(ch, i)), ...(hasFan ? [level(8, i)] : [])],
+  }));
 }
 
 class RivalAquaScheduleCard extends HTMLElement {
@@ -252,7 +306,7 @@ class RivalAquaScheduleCard extends HTMLElement {
     this._saving = true;
     this._msg = null;
     this._renderPanel();
-    const n = this._series.length - (this._hasFan ? 1 : 0);
+    const n = this._channelCount();
     const points = this._points.map((p) => {
       const out = { time: fmt(p.t), levels: p.v.slice(0, n) };
       if (this._hasFan) out.fan = p.v[n];
@@ -269,6 +323,37 @@ class RivalAquaScheduleCard extends HTMLElement {
       this._saving = false;
       this._renderAll();
     }
+  }
+
+  _channelCount() {
+    return this._series.length - (this._hasFan ? 1 : 0);
+  }
+
+  /** Download what the editor shows, in the controller's preset format. */
+  _backup() {
+    const csv = scheduleToCsv(this._points, this._channelCount(), this._hasFan);
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([csv], { type: "text/csv" }));
+    a.download = `rival-aqua-schedule-${new Date().toISOString().slice(0, 10)}.csv`;
+    this.shadowRoot.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(() => URL.revokeObjectURL(a.href), 10_000);
+  }
+
+  /** Load a preset CSV into the editor as unsaved changes; nothing is sent until Save. */
+  async _restore(file) {
+    try {
+      if (file.size > 64 * 1024) throw new Error("file too large");
+      const points = csvToSchedule(await file.text(), this._channelCount(), this._hasFan, this._max);
+      this._points = points;
+      this._sel = null;
+      this._cursor = null;
+      this._msg = { kind: "ok", text: this._t("restored", { n: points.length, file: file.name }) };
+    } catch (err) {
+      this._msg = { kind: "error", text: this._t("badFile", { why: err.message }) };
+    }
+    this._renderAll();
   }
 
   // ---------------------------------------------------------------- editing
@@ -330,6 +415,13 @@ class RivalAquaScheduleCard extends HTMLElement {
       <ha-card>
         <div class="header">
           <div class="title"></div>
+          <button class="icon" data-act="backup" aria-label="backup">
+            <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M5 20h14v-2H5zm7-3 5-5h-3V4h-4v8H7z"/></svg>
+          </button>
+          <button class="icon" data-act="restore" aria-label="restore">
+            <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M5 20h14v-2H5zm7-16-5 5h3v6h4V9h3z"/></svg>
+          </button>
+          <input type="file" accept=".csv,text/csv,text/plain" hidden>
           <button class="icon" data-act="reload" aria-label="reload">
             <svg viewBox="0 0 24 24" width="20" height="20"><path fill="currentColor" d="M17.65 6.35A7.96 7.96 0 0 0 12 4a8 8 0 1 0 7.73 10h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4z"/></svg>
           </button>
@@ -347,6 +439,12 @@ class RivalAquaScheduleCard extends HTMLElement {
     this._svg = root.querySelector("svg.plot");
     this._panelEl = root.querySelector(".panel");
     this._footerEl = root.querySelector(".footer");
+    this._fileEl = root.querySelector('input[type="file"]');
+    this._fileEl.addEventListener("change", () => {
+      const file = this._fileEl.files?.[0];
+      this._fileEl.value = "";
+      if (file) this._restore(file);
+    });
     this._root.tabIndex = 0;
 
     this._ro = new ResizeObserver(() => {
@@ -565,9 +663,12 @@ class RivalAquaScheduleCard extends HTMLElement {
     const note = $(".note");
     note.hidden = !dirty;
     note.textContent = this._t("saveNote");
-    const reload = this._root.querySelector('[data-act="reload"]');
-    reload.disabled = busy;
-    reload.title = this._t("reload");
+    for (const act of ["reload", "backup", "restore"]) {
+      const b = this._root.querySelector(`[data-act="${act}"]`);
+      b.disabled = busy || (act !== "reload" && !this._loaded);
+      b.title = this._t(act);
+      b.setAttribute("aria-label", b.title);
+    }
   }
 
   /** Update the selected point's inputs in place (keeps focus while dragging/typing). */
@@ -705,6 +806,12 @@ class RivalAquaScheduleCard extends HTMLElement {
         break;
       case "add":
         this._addPoint(this._cursor);
+        break;
+      case "backup":
+        this._backup();
+        break;
+      case "restore":
+        this._fileEl.click();
         break;
       case "delete":
         this._deletePoint(this._sel);

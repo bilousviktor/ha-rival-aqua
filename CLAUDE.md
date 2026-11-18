@@ -28,14 +28,19 @@ Local polling over HTTP, no cloud. Distributed via HACS.
   ...). It changes the light over a live aquarium.
 - Not yet verified on real hardware: write paths in manual mode, and whether the schedule save
   round-trips (save the current schedule unchanged, then check `/chartdata.js` is identical).
+  Also unverified: every settings write (`/saveparam` + `/savenamechan`, `/color`, `/fanenset`,
+  Wi-Fi join/forget, `/setdefault`); in particular whether `/saveparam` restarts the hotspot or reboots.
+- Never commit real values read from the controller (hotspot password, nearby SSIDs): the repo is public.
 
 ## Code layout
 
 - `api.py`: aiohttp client, no HA imports (testable standalone). Parsing of the JS files lives here.
 - `coordinator.py`: DataUpdateCoordinator, 10 s poll, write helpers that raise HomeAssistantError.
 - `light.py`: combined RGBWW light (maps the 5 channels by name, see `levels.py`) plus one light per channel.
-- `switch.py` (manual mode, night indicator), `button.py` (sync clock), `fan.py` (cooler, only if enabled).
-- `services.py`: `rival_aqua.get_schedule` / `rival_aqua.set_schedule`.
+- `switch.py` (manual mode, night indicator, cooler channel), `button.py` (sync clock, restart),
+  `fan.py` (cooler, only if enabled), `text.py` (channel names/colours), `sensor.py` (network, diagnostic).
+- `services.py`: schedule get/set, plus hotspot, Wi-Fi scan/join/forget and factory reset.
+- `frontend/rival-aqua-schedule-card.js`: schedule editor card (no build step), served by `__init__.py`.
 
 ## Tests
 

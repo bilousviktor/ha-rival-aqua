@@ -31,6 +31,16 @@ class Controller:
         self.points = [[0, 14, 59, 59, 14, 0]] + [[0, 5, 10, 10, 5, 0]] * 4 + [[0] * 6] * 4
         self.pending_times = None
         self.log: list[str] = []
+        # Settings page state
+        self.names = ["Cool White", "Green", "Blue ", "Warm White ", "Red", "Red 2", "White 2", "White 22", "Cooler"]
+        self.colors = ["#FFFFFF", "#32CD32", "#0000ff", "#ffff00", "#ff0000", "#FF00FF", "#F0F0F0", "#F0FF00", "#FF4500"]
+        self.hotspot = ("Rival_LED", "11223344")  # made-up values
+        self.ip = "192.168.5.200"
+        self.home = "HomeNet"
+        self.scan_result = ["HomeNet", "HomeNet-5G", "Neighbour"]
+        self.wifi_passwords = {"HomeNet-5G": "secret123"}
+        self.reboots = 0
+        self.factory_resets = 0
 
     def chartdata(self) -> str:
         fmt = lambda m: f"{m // 60:02d}:{m % 60:02d}"
@@ -64,8 +74,60 @@ class Controller:
         add("/curlevelrange", lambda q: txt("".join(f"{v};" for v in self.levels + ([self.fan_level] if self.fan else []))))
         add("/handmodestate", lambda q: txt(self.hand))
         add("/blockrange", lambda q: txt(self.block))
-        add("/namechannellist.js", lambda q: js("var ChannelNameArr=['Cool White','Green','Blue ','Warm White ','Red','Red 2','White 2','White 22','Cooler'];"))
-        add("/color.js", lambda q: js("var ColorCHarr=['#FFFFFF','#32CD32','#0000ff','#ffff00','#ff0000','#FF00FF','#F0F0F0','#F0FF00','#FF4500'];"))
+        arr = lambda name, xs: js(f"var {name}=[" + ",".join(f"'{x}'" for x in xs) + "];")
+        add("/namechannellist.js", lambda q: arr("ChannelNameArr", self.names))
+        add("/color.js", lambda q: arr("ColorCHarr", self.colors))
+        add("/curip", lambda q: txt(self.ip))
+        add("/curhomelan", lambda q: txt(self.home))
+        add("/wifisetup.js", lambda q: js(f"var WifiPointName='{self.hotspot[0]}';var WifiPointPass='{self.hotspot[1]}';"))
+        self._wifilist: list[str] = []
+        add("/wifilist.js", lambda q: arr("WifiName", self._wifilist))
+
+        def scanlan(q):
+            self._wifilist = list(self.scan_result); return txt("OK")
+        add("/scanlan", scanlan)
+
+        def connectwifi(q):
+            ssid, pw = q.query["namewifi"], q.query["passwifi"]
+            if ssid == "":
+                self.home = ""
+                return txt("OK")
+            if self.wifi_passwords.get(ssid) == pw:
+                self.home = ssid
+                return txt("connect")
+            return txt("error")
+        add("/connectwifi", connectwifi)
+
+        def reboot(q):
+            self.reboots += 1; return txt("OK")
+        add("/reboot", reboot)
+
+        def setdefault(q):
+            self.factory_resets += 1; return txt("OK")
+        add("/setdefault", setdefault)
+
+        def fanenset(q):
+            self.fan = q.query["state"] == "true"; return txt("OK")
+        add("/fanenset", fanenset)
+
+        def color(q):
+            self.colors[int(q.query["range"])] = "#" + q.query["level"]; return txt("OK")
+        add("/color", color)
+
+        def saveparam(q):
+            self.hotspot = (q.query["namepoint"], q.query["passpoint"]); return txt("OK")
+        add("/saveparam", saveparam)
+
+        def savenamechan(q):
+            for i in range(self.channels):
+                self.names[i] = q.query[f"name{i}"]
+            return txt("OK")
+        add("/savenamechan", savenamechan)
+
+        def preset(q):
+            rows = [self.times] + self.points
+            return txt("\n".join("".join(f"{v}," for v in row) for row in rows) + "\n")
+        add("/user_preset.csv", preset)
         add("/curver", lambda q: txt("2.1"))
         add("/chartdata.js", lambda q: js(self.chartdata()))
 

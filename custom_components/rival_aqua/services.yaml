@@ -22,3 +22,62 @@ set_schedule:
          {"time": "22:00", "levels": [0, 0, 0, 0, 0]}]
       selector:
         object:
+
+set_hotspot:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: rival_aqua
+    name:
+      required: false
+      example: Rival_LED
+      selector:
+        text:
+    password:
+      required: false
+      selector:
+        text:
+          type: password
+
+scan_wifi:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: rival_aqua
+
+connect_wifi:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: rival_aqua
+    ssid:
+      required: true
+      selector:
+        text:
+    password:
+      required: true
+      selector:
+        text:
+          type: password
+
+forget_wifi:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: rival_aqua
+
+factory_reset:
+  fields:
+    config_entry_id:
+      required: false
+      selector:
+        config_entry:
+          integration: rival_aqua

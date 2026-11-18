@@ -15,6 +15,25 @@ over your LAN.
 | `fan.<name>_cooler` | Only if the cooler is enabled on the controller. |
 | `switch.<name>_night_indicator` | The controller's night status LED. Disabled by default. |
 
+### Settings (the controller's settings page)
+
+Device page → *Configuration* and *Diagnostic*:
+
+| Entity / action | What it does |
+|---|---|
+| `text.<name>_channel_N_name` | Channel name (up to 25 characters). The integration reloads so light names follow. **The combined RGBWW light needs the stock names** (Red, Green, Blue, Cool White, Warm White); with other names it becomes brightness-only. |
+| `text.<name>_<channel>_colour` | Channel display colour `#RRGGBB`, used by the controller's web chart and the schedule card. |
+| `switch.<name>_cooler_channel` | Enables the cooler on channel 8 ("Вентилятор"). The integration reloads and the fan entity appears or disappears. |
+| `button.<name>_restart` | Reboots the controller. It reconnects on its own. |
+| `sensor.<name>_ip_address`, `_wi_fi_network`, `_hotspot_name` | Network details (diagnostic). The hotspot password is never stored in a state. |
+| `rival_aqua.set_hotspot` | Changes the controller's own hotspot name (4-20 of `A-Z a-z 0-9 - _`) and/or password (8-12 digits). |
+| `rival_aqua.scan_wifi` | Lists the Wi-Fi networks the controller sees (returns a response). |
+| `rival_aqua.connect_wifi` | Joins another home network. ⚠️ It leaves the current one: HA loses it until you add it again with its new IP. |
+| `rival_aqua.forget_wifi` | Forgets the home network and reboots into hotspot-only mode. ⚠️ HA can't reach it afterwards; reconnect via its hotspot. |
+| `rival_aqua.factory_reset` | The settings page's Reset. ⚠️ Back up the schedule first (card → download icon). |
+
+Firmware updates stay on the controller's own web page.
+
 ### Schedule (periods and levels)
 
 Live changes from the lights above don't need saving, same as manual mode in the web UI. To change the
@@ -39,6 +58,8 @@ title: Aquarium            # optional
   the levels the curve already has at that time.
 * Select a point to set its exact time and every channel's level, or to delete it (also Delete key).
 * The colour chips at the top edit one channel alone. Use them when several lines overlap.
+* The download icon saves the schedule as a CSV in the same format as the controller's preset file
+  (settings page → Presets). The upload icon loads such a file into the editor; check it, then Save.
 * Nothing reaches the light until **Save**. Save sends what the web UI's Save button sends, turns
   manual mode off, and reads the schedule back from the controller. **Revert** discards your edits.
 
@@ -121,6 +142,13 @@ All endpoints are `GET` on port 80, `text/plain` responses, no auth.
 | `/synchtime?hour=H&min=M&sec=S` | set the clock |
 | `/lightset?state=true/false` | night indicator |
 | `/pointtimes?pn=N&p0=<min>..` then `/pointch?ch=0..8&p0=<lvl>..`, then `/pwm_man?state=false` + `/blockrangeset?state=false` | **Save** the schedule (the web UI's save button) |
+| `/user_preset.csv` | schedule as CSV: times row, then 9 channel rows (upload is `POST /upload`, field `photo`) |
+| `/wifisetup.js` | hotspot name and password (JS vars, readable without auth) |
+| `/saveparam?namepoint=..&passpoint=..` then `/savenamechan?name0=..` | settings page **Save**: hotspot, then channel names |
+| `/color?range=N&level=RRGGBB` | channel colour (applied immediately) |
+| `/fanenset?state=true/false` | enable the cooler channel |
+| `/scanlan` then `/wifilist.js`; `/connectwifi?namewifi=..&passwifi=..` (answers `connect`) | Wi-Fi scan and join; empty values + `/reboot` = forget |
+| `/reboot`, `/setdefault` | reboot, reset to defaults |
 
 `tools/rival_probe.py <ip>` prints the read-only values for a quick check.
 

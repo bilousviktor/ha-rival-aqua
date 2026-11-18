@@ -14,7 +14,7 @@ from homeassistant.core import (
     SupportsResponse,
     callback,
 )
-from homeassistant.exceptions import ServiceValidationError
+from homeassistant.exceptions import HomeAssistantError, ServiceValidationError
 from homeassistant.helpers import config_validation as cv
 
 from .api import (
@@ -35,6 +35,15 @@ ATTR_FAN = "fan"
 
 SERVICE_GET_SCHEDULE = "get_schedule"
 SERVICE_SET_SCHEDULE = "set_schedule"
+SERVICE_SET_HOTSPOT = "set_hotspot"
+SERVICE_SCAN_WIFI = "scan_wifi"
+SERVICE_CONNECT_WIFI = "connect_wifi"
+SERVICE_FORGET_WIFI = "forget_wifi"
+SERVICE_FACTORY_RESET = "factory_reset"
+
+ATTR_NAME = "name"
+ATTR_PASSWORD = "password"
+ATTR_SSID = "ssid"
 
 _TIME_RE = re.compile(r"^(\d{1,2}):(\d{2})(?::\d{2})?$")
 
@@ -55,6 +64,22 @@ SET_SCHEMA = vol.Schema(
     {
         vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
         vol.Required(ATTR_POINTS): vol.All(cv.ensure_list, [POINT_SCHEMA]),
+    }
+)
+
+ENTRY_SCHEMA = vol.Schema({vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string})
+HOTSPOT_SCHEMA = vol.Schema(
+    {
+        vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
+        vol.Optional(ATTR_NAME): cv.string,
+        vol.Optional(ATTR_PASSWORD): cv.string,
+    }
+)
+CONNECT_SCHEMA = vol.Schema(
+    {
+        vol.Optional(ATTR_CONFIG_ENTRY_ID): cv.string,
+        vol.Required(ATTR_SSID): cv.string,
+        vol.Required(ATTR_PASSWORD): cv.string,
     }
 )
 
@@ -165,6 +190,46 @@ def async_setup_services(hass: HomeAssistant) -> None:
         times, levels = _points_to_arrays(coordinator, call.data[ATTR_POINTS])
         await coordinator.async_set_schedule(times, levels)
 
+    async def set_hotspot(call: ServiceCall) -> None:
+        if ATTR_NAME not in call.data and ATTR_PASSWORD not in call.data:
+            raise ServiceValidationError("Give a new hotspot name, password, or both")
+        coordinator = _coordinator(hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
+        await coordinator.async_set_hotspot(call.data.get(ATTR_NAME), call.data.get(ATTR_PASSWORD))
+
+    async def scan_wifi(call: ServiceCall) -> ServiceResponse:
+        coordinator = _coordinator(hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
+        return {"networks": await coordinator.async_scan_wifi()}
+
+    async def connect_wifi(call: ServiceCall) -> None:
+        coordinator = _coordinator(hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
+        if not await coordinator.async_connect_wifi(call.data[ATTR_SSID], call.data[ATTR_PASSWORD]):
+            raise HomeAssistantError(
+                f"The controller could not join '{call.data[ATTR_SSID]}'. Check the password."
+            )
+
+    async def forget_wifi(call: ServiceCall) -> None:
+        coordinator = _coordinator(hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
+        await coordinator.async_forget_wifi()
+
+    async def factory_reset(call: ServiceCall) -> None:
+        coordinator = _coordinator(hass, call.data.get(ATTR_CONFIG_ENTRY_ID))
+        await coordinator.async_factory_reset()
+
+    hass.services.async_register(DOMAIN, SERVICE_SET_HOTSPOT, set_hotspot, schema=HOTSPOT_SCHEMA)
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_SCAN_WIFI,
+        scan_wifi,
+        schema=ENTRY_SCHEMA,
+        supports_response=SupportsResponse.ONLY,
+    )
+    hass.services.async_register(
+        DOMAIN, SERVICE_CONNECT_WIFI, connect_wifi, schema=CONNECT_SCHEMA
+    )
+    hass.services.async_register(DOMAIN, SERVICE_FORGET_WIFI, forget_wifi, schema=ENTRY_SCHEMA)
+    hass.services.async_register(
+        DOMAIN, SERVICE_FACTORY_RESET, factory_reset, schema=ENTRY_SCHEMA
+    )
     hass.services.async_register(
         DOMAIN,
         SERVICE_GET_SCHEDULE,
